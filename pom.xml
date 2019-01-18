@@ -26,6 +26,9 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <java_version>1.8</java_version>
+    <!-- Integration tests for connectors have special requirements, so
+         skip them by default. -->
+    <skipITs>true</skipITs>
   </properties>
 
   <build>
@@ -176,8 +179,7 @@
         <artifactId>maven-failsafe-plugin</artifactId>
         <version>2.22.0</version>
         <configuration>
-          <skipTests>${skipTests}</skipTests>
-          <skipITs>${skipIntegrationTests}</skipITs>
+        <skipITs>${skipITs}</skipITs>
           <!-- Print the full stack trace. Without this, the stack printed to the console
           won't include any frames in the code under test, which makes failures harder to
           debug. -->
