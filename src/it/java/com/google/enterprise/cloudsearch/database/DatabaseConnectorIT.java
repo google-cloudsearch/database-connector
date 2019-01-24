@@ -21,7 +21,6 @@ import static com.google.enterprise.cloudsearch.sdk.TestProperties.SERVICE_KEY_P
 import static com.google.enterprise.cloudsearch.sdk.TestProperties.qualifyTestProperty;
 
 import com.google.api.services.cloudsearch.v1.model.Item;
-import com.google.common.base.Strings;
 import com.google.enterprise.cloudsearch.sdk.Util;
 import com.google.enterprise.cloudsearch.sdk.config.Configuration.ResetConfigRule;
 import com.google.enterprise.cloudsearch.sdk.indexing.CloudSearchService;
@@ -29,6 +28,7 @@ import com.google.enterprise.cloudsearch.sdk.indexing.DefaultAcl.DefaultAclMode;
 import com.google.enterprise.cloudsearch.sdk.indexing.IndexingApplication;
 import com.google.enterprise.cloudsearch.sdk.indexing.IndexingItemBuilder.ItemType;
 import com.google.enterprise.cloudsearch.sdk.indexing.MockItem;
+import com.google.enterprise.cloudsearch.sdk.indexing.StructuredDataHelper;
 import com.google.enterprise.cloudsearch.sdk.indexing.template.FullTraversalConnector;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -76,6 +76,7 @@ public class DatabaseConnectorIT {
   public static void initialize() throws Exception {
     validateInputParams();
     v1Client = new CloudSearchService(keyFilePath, indexingSourceId, rootUrl);
+    StructuredDataHelper.verifyMockContentDatasourceSchema(v1Client.getSchema());
   }
 
   private String getDBUrl() throws IOException {
@@ -125,7 +126,8 @@ public class DatabaseConnectorIT {
       dataSourceId = System.getProperty(DATA_SOURCE_ID_PROPERTY_NAME);
       serviceKeyPath = Paths.get(System.getProperty(SERVICE_KEY_PROPERTY_NAME));
       assertThat(serviceKeyPath.toFile().exists()).isTrue();
-      assertThat(Strings.isNullOrEmpty(dataSourceId)).isFalse();
+      assertThat(dataSourceId).isNotNull();
+      assertThat(dataSourceId).isNotEmpty();
       rootUrl = Optional.ofNullable(System.getProperty(ROOT_URL_PROPERTY_NAME));
     } catch (AssertionError error) {
       logger.log(Level.SEVERE,
@@ -192,9 +194,90 @@ public class DatabaseConnectorIT {
         .setItemType(ItemType.CONTENT_ITEM.toString())
         .build();
     runAwaitConnector(args);
-    getAndAssertItem(getItemId(row1), itemId1.getItem());
-    getAndAssertItem(getItemId(row2), itemId2.getItem());
-    getAndAssertItem(getItemId(row3), itemId3.getItem());
+    getAndAssertItem(v1Client.getItem(getItemId(row1)), itemId1.getItem());
+    getAndAssertItem(v1Client.getItem(getItemId(row2)), itemId2.getItem());
+    getAndAssertItem(v1Client.getItem(getItemId(row3)), itemId3.getItem());
+  }
+
+  @Test
+  public void testStructuredData() throws IOException, SQLException, InterruptedException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.put("db.allRecordsSql", "Select id, textField as text, integerField as integer,"
+        + " booleanField as boolean, doubleField as double, dateField as date from " + tableName);
+    config.put("db.allColumns", "id, textField, integerField, booleanField, doubleField,"
+        + " dateField");
+    config.put("itemMetadata.objectType", "myMockDataObject");
+    config.put("url.columns", "id");
+    config.put("url.format", "http://mycompany.com/employee/{0}");
+    String row1 = "s1" + randomId;
+    String row2 = "s2" + randomId;
+    String row3 = "s3" + randomId;
+
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName + "(id varchar(32) unique not null,"
+        + " textField varchar(128), integerField integer(50), booleanField boolean,"
+        + " doubleField double, dateField date)");
+    query.add("insert into " + tableName
+        + " (id, textField, integerField, booleanField, doubleField, dateField)"
+        + " values ('" + row1 + "', 'Jones May', '2134678', 'true', '2000', '2007-11-20')");
+    query.add("insert into " + tableName
+        + " (id, textField, integerField, booleanField, doubleField, dateField)"
+        + " values ('" + row2 + "', 'Joe Smith', '-9846', 'false', '12000.00', '1987-02-28')");
+    query.add("insert into " + tableName
+        + " (id, textField, integerField, booleanField, doubleField, dateField)"
+        + " values ('" + row3 + "', 'Mike Smith', '9358014', 'true', '-9000.00', '1940-11-11')");
+    String[] args = setupDataAndConfiguration(config, query);
+
+    MockItem itemId1 = new MockItem.Builder(getItemId(row1))
+        .setTitle(row1)
+        .setSourceRepositoryUrl("http://mycompany.com/employee/" + row1)
+        .setContentLanguage("en-US")
+        .setItemType(ItemType.CONTENT_ITEM.toString())
+        .addValue("text", "Jones May")
+        .addValue("integer", "2134678")
+        .addValue("boolean", "true")
+        .addValue("date", "2007-11-20")
+        .addValue("double", "2000.00")
+        .setObjectType("myMockDataObject")
+        .build();
+    MockItem itemId2 = new MockItem.Builder(getItemId(row2))
+        .setTitle(row2)
+        .setSourceRepositoryUrl("http://mycompany.com/employee/" + row2)
+        .setContentLanguage("en-US")
+        .setItemType(ItemType.CONTENT_ITEM.toString())
+        .addValue("text", "Joe Smith")
+        .addValue("integer", "-9846")
+        .addValue("boolean", "false")
+        .addValue("date", "1987-02-28")
+        .addValue("double", "12000.00")
+        .setObjectType("myMockDataObject")
+        .build();
+    MockItem itemId3 = new MockItem.Builder(getItemId(row3))
+        .setTitle(row3)
+        .setSourceRepositoryUrl("http://mycompany.com/employee/" + row3)
+        .setContentLanguage("en-US")
+        .setItemType(ItemType.CONTENT_ITEM.toString())
+        .addValue("text", "Mike Smith")
+        .addValue("integer", "9358014")
+        .addValue("boolean", "true")
+        .addValue("date", "1940-11-11")
+        .addValue("double", "-9000.00")
+        .setObjectType("myMockDataObject")
+        .build();
+    runAwaitConnector(args);
+    verifyStructuredData(getItemId(row1), "myMockDataObject", itemId1.getItem());
+    verifyStructuredData(getItemId(row2), "myMockDataObject", itemId2.getItem());
+    verifyStructuredData(getItemId(row3), "myMockDataObject", itemId3.getItem());
+  }
+
+  private void verifyStructuredData(String itemId, String schemaObjectType,
+      Item expectedItem) throws IOException {
+    Item actualItem = v1Client.getItem(itemId);
+    logger.log(Level.INFO, "Verifying actualItem: {0}", actualItem);
+    StructuredDataHelper.assertStructuredData(actualItem, expectedItem, schemaObjectType);
+    getAndAssertItem(actualItem, expectedItem);
   }
 
   private void runAwaitConnector(String[] args) throws InterruptedException {
@@ -210,20 +293,19 @@ public class DatabaseConnectorIT {
     return dbConnector;
   }
 
-  private void getAndAssertItem(String itemId, Item expectedItem) throws IOException {
-    Item actualItem = v1Client.getItem(itemId);
+  private void getAndAssertItem(Item actualItem, Item expectedItem) throws IOException {
     logger.log(Level.INFO, "Verifying actualItem: {0}", actualItem);
     try {
       assertThat(actualItem.getStatus().getCode()).isEqualTo("ACCEPTED");
-      assertThat(expectedItem.getItemType()).isEqualTo(actualItem.getItemType());
-      assertThat(expectedItem.getMetadata()).isEqualTo(actualItem.getMetadata());
-      assertThat(expectedItem.getName()).isEqualTo(actualItem.getName());
+      assertThat(actualItem.getItemType()).isEqualTo(expectedItem.getItemType());
+      assertThat(actualItem.getMetadata()).isEqualTo(expectedItem.getMetadata());
+      assertThat(actualItem.getName()).isEqualTo(expectedItem.getName());
     } finally {
       v1Client.deleteItem(actualItem.getName(), actualItem.getVersion());
     }
   }
 
   private String getItemId(String name) {
-    return "datasources/" + indexingSourceId + "/items/" + name;
+    return Util.getItemId(indexingSourceId, name);
   }
 }
