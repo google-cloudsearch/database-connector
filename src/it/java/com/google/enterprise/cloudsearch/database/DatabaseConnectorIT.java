@@ -98,23 +98,23 @@ public class DatabaseConnectorIT {
   private Properties createRequiredProperties(String dbUrl) throws IOException {
     Properties config = new Properties();
     rootUrl.ifPresent(r -> config.setProperty("api.rootUrl", r));
-    config.put("api.sourceId", indexingSourceId);
-    config.put("api.serviceAccountPrivateKeyFile", keyFilePath);
-    config.put("connector.runOnce", "true");
-    config.put("connector.checkpointDirectory",
+    config.setProperty("api.sourceId", indexingSourceId);
+    config.setProperty("api.serviceAccountPrivateKeyFile", keyFilePath);
+    config.setProperty("connector.runOnce", "true");
+    config.setProperty("connector.checkpointDirectory",
         configFolder.newFolder().getAbsolutePath());
-    config.put("db.url", dbUrl);
-    config.put("db.user", DB_USER);
-    config.put("db.password", DB_PASSWORD);
-    config.put("db.viewUrlColumns", "id");
-    config.put("db.uniqueKeyColumns", "id");
-    config.put("url.columns", "id, name");
-    config.put("itemMetadata.title.field", "id");
-    config.put("itemMetadata.contentLanguage.defaultValue", "en-US");
-    config.put("contentTemplate.db.title", "id");
-    config.put("defaultAcl.mode", DefaultAclMode.FALLBACK.toString());
-    config.put("defaultAcl.public", "true");
-    config.put("traverse.queueTag", "mockDatabaseConnectorQueue-" + Util.getRandomId());
+    config.setProperty("db.url", dbUrl);
+    config.setProperty("db.user", DB_USER);
+    config.setProperty("db.password", DB_PASSWORD);
+    config.setProperty("db.viewUrlColumns", "id");
+    config.setProperty("db.uniqueKeyColumns", "id");
+    config.setProperty("url.columns", "id, name");
+    config.setProperty("itemMetadata.title.field", "id");
+    config.setProperty("itemMetadata.contentLanguage.defaultValue", "en-US");
+    config.setProperty("contentTemplate.db.title", "id");
+    config.setProperty("defaultAcl.mode", DefaultAclMode.FALLBACK.toString());
+    config.setProperty("defaultAcl.public", "true");
+    config.setProperty("traverse.queueTag", "mockDatabaseConnectorQueue-" + Util.getRandomId());
     return config;
   }
 
@@ -160,8 +160,8 @@ public class DatabaseConnectorIT {
     String randomId = Util.getRandomId();
     String tableName = name.getMethodName() + randomId;
     Properties config = new Properties();
-    config.put("db.allRecordsSql", "Select id, name, phone from " + tableName);
-    config.put("db.allColumns", "id, name, phone");
+    config.setProperty("db.allRecordsSql", "Select id, name, phone from " + tableName);
+    config.setProperty("db.allColumns", "id, name, phone");
     String row1 = "x1" + randomId;
     String row2 = "x2" + randomId;
     String row3 = "x3" + randomId;
@@ -204,13 +204,14 @@ public class DatabaseConnectorIT {
     String randomId = Util.getRandomId();
     String tableName = name.getMethodName() + randomId;
     Properties config = new Properties();
-    config.put("db.allRecordsSql", "Select id, textField as text, integerField as integer,"
-        + " booleanField as boolean, doubleField as double, dateField as date from " + tableName);
-    config.put("db.allColumns", "id, textField, integerField, booleanField, doubleField,"
-        + " dateField");
-    config.put("itemMetadata.objectType", "myMockDataObject");
-    config.put("url.columns", "id");
-    config.put("url.format", "http://mycompany.com/employee/{0}");
+    config.setProperty("db.allRecordsSql", "Select id, textField as text, integerField as integer,"
+        + " booleanField as boolean, doubleField as double, dateField as date,"
+        + " timestampField as timestamp, enumField as enum from " + tableName);
+    config.setProperty("db.allColumns", "id, textField, integerField, booleanField, doubleField,"
+        + " dateField, timestampField, enumField");
+    config.setProperty("itemMetadata.objectType", "myMockDataObject");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
     String row1 = "s1" + randomId;
     String row2 = "s2" + randomId;
     String row3 = "s3" + randomId;
@@ -218,21 +219,24 @@ public class DatabaseConnectorIT {
     List<String> query = new ArrayList<>();
     query.add("create table " + tableName + "(id varchar(32) unique not null,"
         + " textField varchar(128), integerField integer(50), booleanField boolean,"
-        + " doubleField double, dateField date)");
+        + " doubleField double, dateField date, timestampField timestamp, enumField integer)");
     query.add("insert into " + tableName
-        + " (id, textField, integerField, booleanField, doubleField, dateField)"
-        + " values ('" + row1 + "', 'Jones May', '2134678', 'true', '2000', '2007-11-20')");
+        + " (id, textField, integerField, booleanField, doubleField, dateField, timestampField,"
+        + " enumField) values ('" + row1 + "', 'Jones May', '2134678', 'true', '2000', "
+            + "'2007-11-20', '1907-10-10T14:21:23.400Z', '2')");
     query.add("insert into " + tableName
-        + " (id, textField, integerField, booleanField, doubleField, dateField)"
-        + " values ('" + row2 + "', 'Joe Smith', '-9846', 'false', '12000.00', '1987-02-28')");
+        + " (id, textField, integerField, booleanField, doubleField, dateField, timestampField,"
+        + " enumField) values ('" + row2 + "', 'Joe Smith', '-9846', 'false', '12000.00',"
+            + " '1987-02-28', '2017-10-10T14:01:23.400Z', '1')");
     query.add("insert into " + tableName
-        + " (id, textField, integerField, booleanField, doubleField, dateField)"
-        + " values ('" + row3 + "', 'Mike Smith', '9358014', 'true', '-9000.00', '1940-11-11')");
+        + " (id, textField, integerField, booleanField, doubleField, dateField, timestampField,"
+        + " enumField) values ('" + row3 + "', 'Mike Smith', '9358014', 'true', '-9000.00',"
+            + " '1940-11-11', '1817-10-10T14:21:23.040Z', '2')");
     String[] args = setupDataAndConfiguration(config, query);
 
     MockItem itemId1 = new MockItem.Builder(getItemId(row1))
         .setTitle(row1)
-        .setSourceRepositoryUrl("http://mycompany.com/employee/" + row1)
+        .setSourceRepositoryUrl("http://example.com/employee/" + row1)
         .setContentLanguage("en-US")
         .setItemType(ItemType.CONTENT_ITEM.toString())
         .addValue("text", "Jones May")
@@ -241,10 +245,12 @@ public class DatabaseConnectorIT {
         .addValue("date", "2007-11-20")
         .addValue("double", "2000.00")
         .setObjectType("myMockDataObject")
+        .addValue("timestamp", "1907-10-10T14:21:23.400Z")
+        .addValue("enum", 2)
         .build();
     MockItem itemId2 = new MockItem.Builder(getItemId(row2))
         .setTitle(row2)
-        .setSourceRepositoryUrl("http://mycompany.com/employee/" + row2)
+        .setSourceRepositoryUrl("http://example.com/employee/" + row2)
         .setContentLanguage("en-US")
         .setItemType(ItemType.CONTENT_ITEM.toString())
         .addValue("text", "Joe Smith")
@@ -253,10 +259,12 @@ public class DatabaseConnectorIT {
         .addValue("date", "1987-02-28")
         .addValue("double", "12000.00")
         .setObjectType("myMockDataObject")
+        .addValue("timestamp", "2017-10-10T14:01:23.400Z")
+        .addValue("enum", 1)
         .build();
     MockItem itemId3 = new MockItem.Builder(getItemId(row3))
         .setTitle(row3)
-        .setSourceRepositoryUrl("http://mycompany.com/employee/" + row3)
+        .setSourceRepositoryUrl("http://example.com/employee/" + row3)
         .setContentLanguage("en-US")
         .setItemType(ItemType.CONTENT_ITEM.toString())
         .addValue("text", "Mike Smith")
@@ -265,11 +273,119 @@ public class DatabaseConnectorIT {
         .addValue("date", "1940-11-11")
         .addValue("double", "-9000.00")
         .setObjectType("myMockDataObject")
+        .addValue("timestamp", "1817-10-10T14:21:23.040Z")
+        .addValue("enum", 2)
         .build();
     runAwaitConnector(args);
     verifyStructuredData(getItemId(row1), "myMockDataObject", itemId1.getItem());
     verifyStructuredData(getItemId(row2), "myMockDataObject", itemId2.getItem());
     verifyStructuredData(getItemId(row3), "myMockDataObject", itemId3.getItem());
+  }
+
+  @Test
+  public void testItemMetadataDefaultValues()
+      throws IOException, SQLException, InterruptedException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "Select id, title, name, phone, created, modified,"
+        + " language from " + tableName);
+    config.setProperty("db.allColumns", "id, title, name, phone, created, modified, language");
+    config.setProperty("itemMetadata.title.field", "title");
+    // itemMetadata.field.defaultValue will take effect in case of null values.
+    config.setProperty("itemMetadata.title.defaultValue", "DEFAULT_TITLE");
+    config.setProperty("url.format", "https://DEFAULT.URL/{0}");
+    config.setProperty("itemMetadata.sourceRepositoryUrl.defaultValue",
+        "https://example.org/" + "name");
+    config.setProperty("itemMetadata.createTime.field", "created");
+    config.setProperty("itemMetadata.createTime.defaultValue", "2007-10-10T14:21:23.400Z");
+    config.setProperty("itemMetadata.updateTime.field", "modified");
+    config.setProperty("itemMetadata.updateTime.defaultValue", "1919-10-10T14:21:23.400Z");
+    config.setProperty("itemMetadata.contentLanguage.field", "language");
+    config.setProperty("itemMetadata.contentLanguage.defaultValue", "fr-CA");
+    String row1 = "row1" + randomId;
+    String row2 = "row2" + randomId;
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName + "(id varchar(32) unique not null, title varchar(100), "
+        + " name varchar(128), phone integer, created timestamp, modified timestamp,"
+        + " language varchar(10))");
+    query.add("insert into " + tableName + " (id, title, name, phone, created, modified, language)"
+        + " values ('" + row1 + "', 'TitleRow1', 'Jones May', '2134', '1907-10-10T14:21:23.400Z',"
+            + " '2018-10-10T14:21:23.400Z', 'de-ch')");
+    query.add("insert into " + tableName + " (id, name, phone)"
+        + " values ('" + row2 + "', 'Mike Smith', '9848')");
+    String[] args = setupDataAndConfiguration(config, query);
+    MockItem itemId1 = new MockItem.Builder(getItemId(row1))
+        .setTitle("TitleRow1")
+        .setSourceRepositoryUrl("https://DEFAULT.URL/" + row1)
+        .setContentLanguage("de-ch")
+        .setItemType(ItemType.CONTENT_ITEM.toString())
+        .setCreateTime("1907-10-10T14:21:23.400Z")
+        .setUpdateTime("2018-10-10T14:21:23.400Z")
+        .build();
+    MockItem itemId2 = new MockItem.Builder(getItemId(row2))
+        .setTitle("DEFAULT_TITLE")
+        .setSourceRepositoryUrl("https://DEFAULT.URL/" + row2)
+        .setContentLanguage("fr-CA")
+        .setCreateTime("2007-10-10T14:21:23.400Z")
+        .setUpdateTime("1919-10-10T14:21:23.400Z")
+        .build();
+    runAwaitConnector(args);
+    getAndAssertItem(v1Client.getItem(getItemId(row1)), itemId1.getItem());
+    getAndAssertItem(v1Client.getItem(getItemId(row2)), itemId2.getItem());
+  }
+
+  @Test
+  public void testArrayDataTypes() throws IOException, SQLException, InterruptedException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "Select id, arrayTextField as text,"
+        + " arrayIntegerField as integer from " + tableName);
+    config.setProperty("db.allColumns", "id, arrayTextField, arrayIntegerField");
+    config.setProperty("itemMetadata.objectType", "myMockDataObject");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    String row1 = "row1" + randomId;
+    String row2 = "row2" + randomId;
+
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName + "(id varchar(32) unique not null,"
+        + " arrayTextField array, arrayIntegerField array)");
+    query.add("insert into " + tableName
+        + " (id, arrayTextField, arrayIntegerField) values"
+        + " ('" + row1 + "', ('joe', 'Smith', 'black'), ('1092', '8765'))");
+    query.add("insert into " + tableName
+        + " (id, arrayTextField, arrayIntegerField) values"
+        + " ('" + row2 + "', ('Jim', 'Black'), ('1092873', '-128765'))");
+    String[] args = setupDataAndConfiguration(config, query);
+
+    MockItem itemId1 = new MockItem.Builder(getItemId(row1))
+        .setTitle(row1)
+        .setSourceRepositoryUrl("http://example.com/employee/" + row1)
+        .setContentLanguage("en-US")
+        .setItemType(ItemType.CONTENT_ITEM.toString())
+        .addValue("text", "joe")
+        .addValue("text", "Smith")
+        .addValue("text", "black")
+        .addValue("integer", "1092")
+        .addValue("integer", "8765")
+        .setObjectType("myMockDataObject")
+        .build();
+   MockItem itemId2 = new MockItem.Builder(getItemId(row2))
+        .setTitle(row2)
+        .setSourceRepositoryUrl("http://example.com/employee/" + row2)
+        .setContentLanguage("en-US")
+        .setItemType(ItemType.CONTENT_ITEM.toString())
+        .addValue("text", "Jim")
+        .addValue("text", "Black")
+        .addValue("integer", "1092873")
+        .addValue("integer", "-128765")
+        .setObjectType("myMockDataObject")
+        .build();
+    runAwaitConnector(args);
+    verifyStructuredData(getItemId(row1), "myMockDataObject", itemId1.getItem());
+    verifyStructuredData(getItemId(row2), "myMockDataObject", itemId2.getItem());
   }
 
   private void verifyStructuredData(String itemId, String schemaObjectType,
@@ -295,6 +411,7 @@ public class DatabaseConnectorIT {
 
   private void getAndAssertItem(Item actualItem, Item expectedItem) throws IOException {
     logger.log(Level.INFO, "Verifying actualItem: {0}", actualItem);
+    logger.log(Level.INFO, "Verifying expectedItem: {0}", expectedItem);
     try {
       assertThat(actualItem.getStatus().getCode()).isEqualTo("ACCEPTED");
       assertThat(actualItem.getItemType()).isEqualTo(expectedItem.getItemType());
