@@ -25,7 +25,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -36,13 +35,11 @@ import com.google.api.services.cloudsearch.v1.model.Item;
 import com.google.api.services.cloudsearch.v1.model.ItemMetadata;
 import com.google.api.services.cloudsearch.v1.model.ItemStructuredData;
 import com.google.api.services.cloudsearch.v1.model.ObjectDefinition;
-import com.google.api.services.cloudsearch.v1.model.Operation;
 import com.google.api.services.cloudsearch.v1.model.Schema;
 import com.google.api.services.cloudsearch.v1.model.StructuredDataObject;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.io.CharStreams;
-import com.google.common.util.concurrent.SettableFuture;
 import com.google.enterprise.cloudsearch.sdk.CheckpointCloseableIterable;
 import com.google.enterprise.cloudsearch.sdk.CheckpointCloseableIterableImpl;
 import com.google.enterprise.cloudsearch.sdk.CheckpointCloseableIterableImpl.CompareCheckpointCloseableIterableRule;
@@ -838,9 +835,6 @@ public class DatabaseRepositoryTest {
 
     // Create the default ACL (normally FullTraversalConnector does this).
     IndexingService indexingServiceMock = mock(IndexingService.class);
-    SettableFuture<Operation> createDefaultAclContainer = SettableFuture.create();
-    createDefaultAclContainer.set(new Operation().setDone(true));
-    when(indexingServiceMock.indexItem(any(), any())).thenReturn(createDefaultAclContainer);
     DefaultAcl defaultAcl = DefaultAcl.fromConfiguration(indexingServiceMock);
     assertEquals(DefaultAclMode.FALLBACK, defaultAcl.getDefaultAclMode());
 
@@ -866,8 +860,7 @@ public class DatabaseRepositoryTest {
     targetItem1.setMetadata(new ItemMetadata().setSourceRepositoryUrl(
         "https://acme.com/name=Joe%20Smith/id=id1#Joe%20Smith"));
     new Acl.Builder()
-        .setInheritFrom(DefaultAcl.DEFAULT_ACL_NAME_DEFAULT)
-        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDE)
+        .setReaders(ImmutableList.of(Acl.getCustomerPrincipal()))
         .build()
         .applyTo(targetItem2);
     targetItem2.setMetadata(new ItemMetadata().setSourceRepositoryUrl(
