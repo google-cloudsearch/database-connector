@@ -58,7 +58,8 @@ import java.util.logging.Logger;
  *
  * <ul>
  *   <li>{@value TRAVERSE_UPDATE_MODE} - Specifies which traversal mode to use: SYNCHRONOUS or
- *       ASYNCHRONOUS (default is SYNCHRONOUS).
+ *       ASYNCHRONOUS (the default is to use the SDK configuration, which by default is
+ *       SYNCHRONOUS).
  * </ul>
  */
 class DatabaseRepository implements Repository {
@@ -95,7 +96,7 @@ class DatabaseRepository implements Repository {
     connectionFactory = databaseRepositoryHelper.getConnectionFactory();
     columnManager = ColumnManager.fromConfiguration(context);
     requestMode =
-        Configuration.getValue(TRAVERSE_UPDATE_MODE, RequestMode.SYNCHRONOUS, RequestMode::valueOf)
+        Configuration.getValue(TRAVERSE_UPDATE_MODE, RequestMode.UNSPECIFIED, RequestMode::valueOf)
             .get();
   }
 

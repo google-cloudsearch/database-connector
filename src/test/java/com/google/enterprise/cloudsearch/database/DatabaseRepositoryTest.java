@@ -347,7 +347,7 @@ public class DatabaseRepositoryTest {
           RepositoryDoc record = (RepositoryDoc) op;
           Item item = record.getItem();
           assertEquals(ContentFormat.HTML, record.getContentFormat());
-          assertEquals(RequestMode.SYNCHRONOUS, record.getRequestMode());
+          assertEquals(RequestMode.UNSPECIFIED, record.getRequestMode());
           assertNull(item.getAcl()); // default: Acl won't be set
           String recordId = item.getName();
           assertNotNull(recordId);
@@ -1876,9 +1876,12 @@ public class DatabaseRepositoryTest {
     ZoneId defaultZone = TimeZone.getDefault().toZoneId();
     // use first test timezone
     TimeZone.setDefault(TimeZone.getTimeZone(ZoneId.of(TIMEZONE_TEST_LOCALE)));
-    changesWithTimezone(getUrl());
-    // restore default
-    TimeZone.setDefault(TimeZone.getTimeZone(defaultZone));
+    try {
+      changesWithTimezone(getUrl());
+    } finally {
+      // restore default
+      TimeZone.setDefault(TimeZone.getTimeZone(defaultZone));
+    }
   }
 
   @Test
@@ -1887,9 +1890,12 @@ public class DatabaseRepositoryTest {
     ZoneId defaultZone = TimeZone.getDefault().toZoneId();
     // use a different test timezone
     TimeZone.setDefault(TimeZone.getTimeZone(ZoneId.of(TIMEZONE_TEST_LOCALE_2)));
-    changesWithTimezone(getUrl());
-    // restore default
-    TimeZone.setDefault(TimeZone.getTimeZone(defaultZone));
+    try {
+      changesWithTimezone(getUrl());
+    } finally {
+      // restore default
+      TimeZone.setDefault(TimeZone.getTimeZone(defaultZone));
+    }
   }
 
   private void changesWithTimezone(String url) throws Exception {
