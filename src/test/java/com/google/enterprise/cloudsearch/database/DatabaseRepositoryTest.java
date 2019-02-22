@@ -18,6 +18,7 @@ package com.google.enterprise.cloudsearch.database;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.not;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -42,7 +43,6 @@ import com.google.common.collect.Iterables;
 import com.google.common.io.CharStreams;
 import com.google.enterprise.cloudsearch.sdk.CheckpointCloseableIterable;
 import com.google.enterprise.cloudsearch.sdk.CheckpointCloseableIterableImpl;
-import com.google.enterprise.cloudsearch.sdk.CheckpointCloseableIterableImpl.CompareCheckpointCloseableIterableRule;
 import com.google.enterprise.cloudsearch.sdk.InvalidConfigurationException;
 import com.google.enterprise.cloudsearch.sdk.RepositoryException;
 import com.google.enterprise.cloudsearch.sdk.config.Configuration.ResetConfigRule;
@@ -121,8 +121,6 @@ public class DatabaseRepositoryTest {
   @Rule public ResetConfigRule resetConfig = new ResetConfigRule();
   @Rule public SetupConfigRule setupConfig = SetupConfigRule.uninitialized();
   @Rule public ResetStructuredDataRule resetStructuredData = new ResetStructuredDataRule();
-  @Rule public CompareCheckpointCloseableIterableRule<ApiOperation> changeComparer =
-      CompareCheckpointCloseableIterableRule.getCompareRule();
 
   @Mock private DatabaseRepository.Helper helperMock;
   @Mock private DatabaseAccess databaseAccessMock;
@@ -1734,7 +1732,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -1770,7 +1768,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -1811,7 +1809,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -1855,7 +1853,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -1938,7 +1936,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -1976,7 +1974,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
         checkpoint2 = incrementalChanges.getCheckpoint();
       }
 
@@ -1984,11 +1982,10 @@ public class DatabaseRepositoryTest {
       try (CheckpointCloseableIterable<ApiOperation> incrementalChanges =
           dbRepository.getChanges(checkpoint2)) {
         assertNotNull(incrementalChanges);
-        assertTrue(
-            changeComparer.compare(
+        assertIterableEquals(
                 new CheckpointCloseableIterableImpl.Builder<ApiOperation>(Collections.emptyList())
                 .setCheckpoint(checkpoint2).build(),
-                incrementalChanges));
+                incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -2261,5 +2258,22 @@ public class DatabaseRepositoryTest {
   private void assertCheckpointEquals(Checkpoint expected, byte[] actual)
       throws RepositoryException {
     assertEquals(expected, Checkpoint.parse(actual, expected.getClass()));
+  }
+
+  // TODO(jlacey): This is an improvement over CompareCheckpointCloseableIterableRule.
+  // Move this to the SDK, either as-is, or as a Hamcrest Matcher or a Truth Subject.
+  // (We intend to migrate to Truth, but see b/123863881.)
+  private <T> void assertIterableEquals(CheckpointCloseableIterable<T> expected,
+      CheckpointCloseableIterable<T> actual) {
+    Iterator actualIterator = actual.iterator();
+    for (T element : expected) {
+      assertTrue("Missing expected elements starting at: " + element, actualIterator.hasNext());
+      assertEquals(element, actualIterator.next());
+    }
+    if (actualIterator.hasNext()) {
+      fail("Unexpected elements starting at: " + actualIterator.next());
+    }
+    assertArrayEquals("getCheckpoint", expected.getCheckpoint(), actual.getCheckpoint());
+    assertEquals("hasMore", expected.hasMore(), actual.hasMore());
   }
 }
