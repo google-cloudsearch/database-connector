@@ -23,7 +23,9 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.google.api.services.cloudsearch.v1.model.Item;
+import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
 import com.google.enterprise.cloudsearch.sdk.Util;
 import com.google.enterprise.cloudsearch.sdk.config.Configuration.ResetConfigRule;
 import com.google.enterprise.cloudsearch.sdk.indexing.CloudSearchService;
@@ -65,13 +67,30 @@ public class DatabaseConnectorIT {
   private static final Logger logger = Logger.getLogger(DatabaseConnectorIT.class.getName());
   private static final String DATA_SOURCE_ID_PROPERTY_NAME = qualifyTestProperty("sourceId");
   private static final String ROOT_URL_PROPERTY_NAME = qualifyTestProperty("rootUrl");
-  private static final String DB_USER = "sa";
-  private static final String DB_PASSWORD = "";
+  private static final String SQL_SERVER_PARAMS_PROPERTY_NAME =
+      qualifyTestProperty("dbSqlParameters");
+  private static String dbSqlParameters;
   private static String keyFilePath;
   private static String indexingSourceId;
   private static Optional<String> rootUrl;
   private static CloudSearchService v1Client;
   private static TestUtils testUtils;
+
+  private static class DatabaseConnectionParams {
+    private final String dbUrl;
+    private final String user;
+    private final String password;
+
+    private DatabaseConnectionParams(String dbUrl, String user, String password) {
+      this.dbUrl = dbUrl;
+      this.user = user;
+      this.password = password;
+    }
+  }
+
+  private static enum Database {
+    H2, SQLSERVER
+  };
 
   @Rule public ResetConfigRule resetConfig = new ResetConfigRule();
   @Rule public TemporaryFolder configFolder = new TemporaryFolder();
@@ -85,15 +104,39 @@ public class DatabaseConnectorIT {
     testUtils = new TestUtils(v1Client);
   }
 
-  private String getDBUrl() throws IOException {
-   return "jdbc:h2:" + new File(configFolder.newFolder(), "integration-test").getAbsolutePath()
-       + ";DATABASE_TO_UPPER=false";
+  private DatabaseConnectionParams getDatabaseConnectionParams(Database databaseType)
+      throws IOException {
+    if (databaseType == Database.SQLSERVER) {
+      List<String> params =
+          Splitter.on(",").trimResults().omitEmptyStrings().splitToList(dbSqlParameters);
+      if (params.size() != 3) {
+        logger.log(Level.SEVERE, getUsageString());
+        throw new IllegalArgumentException(
+            "Invalid connection params for SQL Server -" + dbSqlParameters);
+      }
+      return new DatabaseConnectionParams(params.get(0), params.get(1), params.get(2));
+    } else {
+      String dbUrl =
+          "jdbc:h2:" + new File(configFolder.newFolder(), "integration-test").getAbsolutePath()
+              + ";DATABASE_TO_UPPER=false";
+      return new DatabaseConnectionParams(dbUrl, "sa", "");
+    }
   }
 
-  private void createDatabase(String dbUrl, List<String> queryStatement)
-      throws SQLException, IOException {
+  private static String getUsageString() {
+    return "Missing input parameters. Rerun the test as \"mvn verify"
+            + " -DargLine=-Dapi.test.serviceAccountPrivateKeyFile=./path/to/key.json"
+            + " -Dapi.test.sourceId=dataSourceId\""
+            + " -Dapi.test.dbSqlParameters="
+            + "jdbc:sqlserver:\\<ipAddress>;databaseName=<dbName>;,<sqlUser>,<sqlPwd>\"";
+  }
+
+  private void executeDatabaseStatement(DatabaseConnectionParams dbConnection,
+      List<String> queryStatement) throws SQLException, IOException {
     // h2 will automatically create database if not available.
-    try (Connection connection = DriverManager.getConnection(dbUrl, DB_USER, DB_PASSWORD);
+    try (
+        Connection connection =
+        DriverManager.getConnection(dbConnection.dbUrl, dbConnection.user, dbConnection.password);
         Statement statement = connection.createStatement()) {
       for (String query : queryStatement) {
         statement.execute(query);
@@ -101,7 +144,8 @@ public class DatabaseConnectorIT {
     }
   }
 
-  private Properties createRequiredProperties(String dbUrl) throws IOException {
+  private Properties createRequiredProperties(DatabaseConnectionParams dbConnection)
+      throws IOException {
     Properties config = new Properties();
     rootUrl.ifPresent(r -> config.setProperty("api.rootUrl", r));
     config.setProperty("api.sourceId", indexingSourceId);
@@ -109,9 +153,9 @@ public class DatabaseConnectorIT {
     config.setProperty("connector.runOnce", "true");
     config.setProperty("connector.checkpointDirectory",
         configFolder.newFolder().getAbsolutePath());
-    config.setProperty("db.url", dbUrl);
-    config.setProperty("db.user", DB_USER);
-    config.setProperty("db.password", DB_PASSWORD);
+    config.setProperty("db.url", dbConnection.dbUrl);
+    config.setProperty("db.user", dbConnection.user);
+    config.setProperty("db.password", dbConnection.password);
     config.setProperty("db.viewUrlColumns", "id");
     config.setProperty("db.uniqueKeyColumns", "id");
     config.setProperty("url.columns", "id, name");
@@ -134,22 +178,19 @@ public class DatabaseConnectorIT {
       assertTrue(serviceKeyPath.toFile().exists());
       assertFalse(Strings.isNullOrEmpty(dataSourceId));
       rootUrl = Optional.ofNullable(System.getProperty(ROOT_URL_PROPERTY_NAME));
+      dbSqlParameters = System.getProperty(SQL_SERVER_PARAMS_PROPERTY_NAME);
     } catch (AssertionError error) {
-      logger.log(Level.SEVERE,
-          "Missing input parameters. Rerun the test as \"mvn verify"
-              + " -DargLine=-Dapi.test.serviceAccountPrivateKeyFile=./path/to/key.json"
-              + " -Dapi.test.sourceId=dataSourceId\"");
+      logger.log(Level.SEVERE, getUsageString());
       throw error;
     }
     indexingSourceId = dataSourceId;
     keyFilePath = serviceKeyPath.toAbsolutePath().toString();
   }
 
-  private String[] setupDataAndConfiguration(Properties additionalConfig,
-      List<String> queryStatement) throws SQLException, IOException {
-    String dbUrl = getDBUrl();
-    createDatabase(dbUrl, queryStatement);
-    Properties config = createRequiredProperties(dbUrl);
+  private String[] setupDataAndConfiguration(DatabaseConnectionParams dbConnection,
+      Properties additionalConfig, List<String> queryStatement) throws SQLException, IOException {
+    executeDatabaseStatement(dbConnection, queryStatement);
+    Properties config = createRequiredProperties(dbConnection);
     config.putAll(additionalConfig);
     logger.log(Level.INFO, "Config file properties: {0}", config);
     File file = configFolder.newFile();
@@ -181,7 +222,8 @@ public class DatabaseConnectorIT {
     query.add("insert into " + tableName + " (id, name, phone)"
         + " values ('" + row3 + "', 'Mike Brown', '3476')");
     try {
-      String[] args = setupDataAndConfiguration(config, query);
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
       MockItem itemId1 = new MockItem.Builder(getItemId(row1))
           .setTitle(row1)
           .setSourceRepositoryUrl(row1)
@@ -245,7 +287,8 @@ public class DatabaseConnectorIT {
         + " enumField) values ('" + row3 + "', 'Mike Smith', '9358014', 'true', '-9000.00',"
             + " '1940-11-11', '1817-10-10T14:21:23.040Z', '2')");
     try {
-      String[] args = setupDataAndConfiguration(config, query);
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
 
       MockItem itemId1 = new MockItem.Builder(getItemId(row1))
           .setTitle(row1)
@@ -333,7 +376,8 @@ public class DatabaseConnectorIT {
     query.add("insert into " + tableName + " (id, name, phone)"
         + " values ('" + row2 + "', 'Mike Smith', '9848')");
     try {
-      String[] args = setupDataAndConfiguration(config, query);
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
       MockItem itemId1 = new MockItem.Builder(getItemId(row1))
           .setTitle("TitleRow1")
           .setSourceRepositoryUrl("https://DEFAULT.URL/" + row1)
@@ -383,7 +427,8 @@ public class DatabaseConnectorIT {
         + " (id, arrayTextField, arrayIntegerField) values"
         + " ('" + row2 + "', ('Jim', 'Black'), ('1092873', '-128765'))");
     try {
-      String[] args = setupDataAndConfiguration(config, query);
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
       MockItem itemId1 = new MockItem.Builder(getItemId(row1))
           .setTitle(row1)
           .setSourceRepositoryUrl("http://example.com/employee/" + row1)
@@ -412,6 +457,74 @@ public class DatabaseConnectorIT {
       verifyStructuredData(getItemId(row1), "myMockDataObject", itemId1.getItem());
       verifyStructuredData(getItemId(row2), "myMockDataObject", itemId2.getItem());
     } finally {
+      v1Client.deleteItemsIfExist(mockItems);
+    }
+  }
+
+  @Test
+  public void testSQLServer() throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "Select id, textField as text, intField as integer,"
+        + " booleanField as boolean, floatField as double, dateField as date,"
+        + " enumField as enum from " + tableName);
+    config.setProperty("db.allColumns", "id, textField, intField, booleanField, floatField,"
+        + " dateField, enumField");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.objectType", "myMockDataObject");
+
+    String row1 = "row1" + randomId;
+    String row2 = "row2" + randomId;
+    List<String> query = new ArrayList<>();
+    List<String> mockItems = new ArrayList<>();
+    query.add("create table " + tableName + " (id varchar(32) unique not null,"
+        + " textField varchar(128), intField int, booleanField bit,"
+        + " floatField float, dateField date, enumField int)");
+    query.add("insert into " + tableName
+        + " (id, textField, intField, booleanField, floatField, dateField,"
+        + " enumField) values ('" + row1 + "', 'Jones May', '2134678', 'true', '2000', "
+            + "'2007-11-20', '2')");
+    query.add("insert into " + tableName
+        + " (id, textField, intField, booleanField, floatField, dateField,"
+        + " enumField) values ('" + row2 + "', 'Joe Smith', '-9846', 'false', '12000.00',"
+            + " '1987-02-28', '1')");
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    MockItem itemId1 = new MockItem.Builder(getItemId(row1))
+        .setTitle(row1)
+        .setSourceRepositoryUrl("http://example.com/employee/" + row1)
+        .setContentLanguage("en-US")
+        .setItemType(ItemType.CONTENT_ITEM.toString())
+        .addValue("text", "Jones May")
+        .addValue("integer", "2134678")
+        .addValue("boolean", "true")
+        .addValue("date", "2007-11-20")
+        .addValue("double", "2000.00")
+        .setObjectType("myMockDataObject")
+        .addValue("enum", 2)
+        .build();
+    MockItem itemId2 = new MockItem.Builder(getItemId(row2))
+        .setTitle(row2)
+        .setSourceRepositoryUrl("http://example.com/employee/" + row2)
+        .setContentLanguage("en-US")
+        .setItemType(ItemType.CONTENT_ITEM.toString())
+        .addValue("text", "Joe Smith")
+        .addValue("integer", "-9846")
+        .addValue("boolean", "false")
+        .addValue("date", "1987-02-28")
+        .addValue("double", "12000.00")
+        .setObjectType("myMockDataObject")
+        .addValue("enum", 1)
+        .build();
+    mockItems.addAll(asList(getItemId(row1), getItemId(row2)));
+    try {
+      runAwaitConnector(args);
+      verifyStructuredData(getItemId(row1), "myMockDataObject", itemId1.getItem());
+      verifyStructuredData(getItemId(row2), "myMockDataObject", itemId2.getItem());
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
       v1Client.deleteItemsIfExist(mockItems);
     }
   }
