@@ -36,6 +36,7 @@ import com.google.enterprise.cloudsearch.sdk.indexing.MockItem;
 import com.google.enterprise.cloudsearch.sdk.indexing.StructuredDataHelper;
 import com.google.enterprise.cloudsearch.sdk.indexing.TestUtils;
 import com.google.enterprise.cloudsearch.sdk.indexing.template.FullTraversalConnector;
+import com.google.enterprise.cloudsearch.sdk.sdk.ConnectorStats;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -51,6 +52,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.awaitility.Awaitility;
+import org.awaitility.Duration;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
@@ -69,6 +72,8 @@ public class DatabaseConnectorIT {
   private static final String ROOT_URL_PROPERTY_NAME = qualifyTestProperty("rootUrl");
   private static final String SQL_SERVER_PARAMS_PROPERTY_NAME =
       qualifyTestProperty("dbSqlParameters");
+  private static final Duration CONNECTOR_RUN_TIME = Duration.ONE_MINUTE;
+  private static final Duration CONNECTOR_RUN_POLL_INTERVAL = Duration.FIVE_SECONDS;
   private static String dbSqlParameters;
   private static String keyFilePath;
   private static String indexingSourceId;
@@ -128,7 +133,7 @@ public class DatabaseConnectorIT {
             + " -DargLine=-Dapi.test.serviceAccountPrivateKeyFile=./path/to/key.json"
             + " -Dapi.test.sourceId=dataSourceId\""
             + " -Dapi.test.dbSqlParameters="
-            + "jdbc:sqlserver:\\<ipAddress>;databaseName=<dbName>;,<sqlUser>,<sqlPwd>\"";
+            + "jdbc:sqlserver://<ipAddress>;databaseName=<dbName>;,<sqlUser>,<sqlPwd>\"";
   }
 
   private void executeDatabaseStatement(DatabaseConnectionParams dbConnection,
@@ -525,6 +530,97 @@ public class DatabaseConnectorIT {
       verifyStructuredData(getItemId(row2), "myMockDataObject", itemId2.getItem());
     } finally {
       executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(mockItems);
+    }
+  }
+
+  @Test
+  public void testFullTraversalWithUpdates()
+      throws IOException, SQLException, InterruptedException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "Select id, name, phone from " + tableName);
+    config.setProperty("db.allRecordsSql", "Select id, name, phone from " + tableName);
+    config.setProperty("db.allColumns", "id, name, phone");
+    config.setProperty("connector.runOnce", "false");
+    config.setProperty("schedule.traversalIntervalSecs", "10");
+
+    String row1 = "row1" + randomId;
+    String row2 = "row2" + randomId;
+    String row3 = "row3" + randomId;
+    String row4 = "row4" + randomId;
+    List<String> mockItems = new ArrayList<>();
+    List<String> query = ImmutableList.of("create table " + tableName
+        + "(id varchar(32) unique not null, name varchar(128), phone varchar(16))",
+        " insert into " + tableName + " (id, name, phone)"
+        + " values ('" + row1 + "', 'Jones May', '2134')",
+        " insert into " + tableName + " (id, name, phone)"
+        + " values ('" + row2 + "', 'Joe Smith', '9848')",
+        " insert into " + tableName + " (id, name, phone)"
+        + " values ('" + row3 + "', 'Mike Brown', '3476')");
+    try {
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
+      MockItem itemId1 = new MockItem.Builder(getItemId(row1))
+          .setTitle(row1)
+          .setSourceRepositoryUrl(row1)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+     MockItem itemId2 = new MockItem.Builder(getItemId(row2))
+          .setTitle(row2)
+          .setSourceRepositoryUrl(row2)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+     MockItem itemId3 = new MockItem.Builder(getItemId(row3))
+          .setTitle(row3)
+          .setSourceRepositoryUrl(row3)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+      mockItems = ImmutableList.of(getItemId(row1), getItemId(row2), getItemId(row3));
+      IndexingApplication dbConnector = runConnector(args);
+      Awaitility.await()
+          .atMost(CONNECTOR_RUN_TIME)
+          .pollInterval(CONNECTOR_RUN_POLL_INTERVAL)
+          .until(() -> ConnectorStats.getSuccessfulFullTraversalsCount() > 0);
+      testUtils.waitUntilEqual(getItemId(row1), itemId1.getItem());
+      testUtils.waitUntilEqual(getItemId(row2), itemId2.getItem());
+      testUtils.waitUntilEqual(getItemId(row3), itemId3.getItem());
+      query = ImmutableList.of("update " + tableName
+          + " set name = 'Jones Mary', phone = '21345' where id = '" + row1 + "'",
+          " delete from " + tableName + " where id = '" + row2 + "'",
+          " insert into " + tableName + " (id, name, phone)"
+          + " values ('" + row4 + "', 'Aleks Smith', '0984')");
+      executeDatabaseStatement(dbConnection, query);
+      int traversalCount = ConnectorStats.getSuccessfulFullTraversalsCount();
+      // Wait for 2 successful full traversal run, in order to ensure connector completes
+      // its full traversal after data update.
+      Awaitility.await()
+          .atMost(CONNECTOR_RUN_TIME)
+          .pollInterval(CONNECTOR_RUN_POLL_INTERVAL)
+          .until(() -> ConnectorStats.getSuccessfulFullTraversalsCount() > traversalCount + 2);
+      dbConnector.shutdown("Shutdown Initiated");
+      MockItem updateItemId = new MockItem.Builder(getItemId(row1))
+          .setTitle(row1)
+          .setSourceRepositoryUrl(row1)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+      MockItem newItemId = new MockItem.Builder(getItemId(row4))
+          .setTitle(row4)
+          .setSourceRepositoryUrl(row4)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+      mockItems = ImmutableList.of(getItemId(row1), getItemId(row3), getItemId(row4));
+      testUtils.waitUntilEqual(getItemId(row1), updateItemId.getItem());
+      testUtils.waitUntilDeleted(getItemId(row2));
+      testUtils.waitUntilEqual(getItemId(row3), itemId3.getItem());
+      testUtils.waitUntilEqual(getItemId(row4), newItemId.getItem());
+    } finally {
       v1Client.deleteItemsIfExist(mockItems);
     }
   }
