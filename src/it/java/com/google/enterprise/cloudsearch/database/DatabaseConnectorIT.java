@@ -47,6 +47,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -621,6 +622,146 @@ public class DatabaseConnectorIT {
       testUtils.waitUntilEqual(getItemId(row3), itemId3.getItem());
       testUtils.waitUntilEqual(getItemId(row4), newItemId.getItem());
     } finally {
+      v1Client.deleteItemsIfExist(mockItems);
+    }
+  }
+
+  @Test
+  public void incrementalTraversal_updateExistingRecord()
+      throws IOException, SQLException, InterruptedException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "Select id, name, phone, dateField,"
+        + " integerField from " + tableName);
+    config.setProperty("db.allRecordsSql", "Select id, name, phone, dateField,"
+        + " integerField from " + tableName);
+    config.setProperty("db.allColumns", "id, name, phone, date");
+    config.setProperty("connector.runOnce", "false");
+    config.setProperty("schedule.incrementalTraversalIntervalSecs", "10");
+    config.setProperty("db.incrementalUpdateSql", "select id, name, phone, dateField,"
+        + " integerField from " + tableName + " where dateField > ?");
+    String row1 = "row1" + randomId;
+    String row2 = "row2" + randomId;
+    List<String> mockItems = new ArrayList<>();
+    List<String> query = ImmutableList.of("create table " + tableName
+        + "(id varchar(32) unique not null, name varchar(128), phone varchar(16),"
+        + " dateField timestamp, integerField integer)",
+        "insert into " + tableName + " (id, name, phone, dateField, integerField)"
+        + " values ('" + row1 + "', 'Jones May', '2134', '1907-10-10T14:21:23.400Z', '1')",
+        "insert into " + tableName + " (id, name, phone)"
+        + " values ('" + row2 + "', 'Joe Smith', '9848')");
+    try {
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
+      MockItem itemId1 = new MockItem.Builder(getItemId(row1))
+          .setTitle(row1)
+          .setSourceRepositoryUrl(row1)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+     MockItem itemId2 = new MockItem.Builder(getItemId(row2))
+          .setTitle(row2)
+          .setSourceRepositoryUrl(row2)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+      mockItems = ImmutableList.of(getItemId(row1), getItemId(row2));
+      IndexingApplication dbConnector = runConnector(args);
+      Awaitility.await()
+          .atMost(CONNECTOR_RUN_TIME)
+          .pollInterval(CONNECTOR_RUN_POLL_INTERVAL)
+          .until(() -> ConnectorStats.getSuccessfulFullTraversalsCount() > 0);
+      testUtils.waitUntilEqual(getItemId(row1), itemId1.getItem());
+      testUtils.waitUntilEqual(getItemId(row2), itemId2.getItem());
+      executeDatabaseStatement(dbConnection,
+          Collections.singletonList("update " + tableName
+              + " set name = 'Jones Mary', phone = '21345',"
+              + " dateField = '2019-01-24T14:21:23.400Z', integerField = '2' where id = '"
+              + row1 + "'"));
+      int traversalCount = ConnectorStats.getSuccessfulIncrementalTraversalsCount();
+      Awaitility.await()
+          .atMost(CONNECTOR_RUN_TIME)
+          .pollInterval(CONNECTOR_RUN_POLL_INTERVAL)
+          .until(() -> ConnectorStats.
+              getSuccessfulIncrementalTraversalsCount() > traversalCount + 2);
+      dbConnector.shutdown("Shutdown Initiated");
+      MockItem updateItemId = new MockItem.Builder(getItemId(row1))
+          .setTitle(row1)
+          .setSourceRepositoryUrl(row1)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+      mockItems = ImmutableList.of(getItemId(row1), getItemId(row2));
+      testUtils.waitUntilEqual(getItemId(row1), updateItemId.getItem());
+      testUtils.waitUntilEqual(getItemId(row2), itemId2.getItem());
+    } finally {
+      v1Client.deleteItemsIfExist(mockItems);
+    }
+  }
+
+  @Test
+  public void incrementalTraversal_addNewRecord()
+      throws IOException, SQLException, InterruptedException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "Select id, name, phone, dateField,"
+        + " integerField from " + tableName);
+    config.setProperty("db.allRecordsSql", "Select id, name, phone, dateField,"
+        + " integerField from " + tableName);
+    config.setProperty("db.allColumns", "id, name, phone, date");
+    config.setProperty("connector.runOnce", "false");
+    config.setProperty("schedule.incrementalTraversalIntervalSecs", "10");
+    config.setProperty("db.incrementalUpdateSql", "select id, name, phone, dateField,"
+        + " integerField from " + tableName + " where dateField > ?");
+    String row1 = "row1" + randomId;
+    String row2 = "row2" + randomId;
+    List<String> mockItems = new ArrayList<>();
+    List<String> query = ImmutableList.of("create table " + tableName
+        + "(id varchar(32) unique not null, name varchar(128), phone varchar(16),"
+        + " dateField datetime, integerField integer)",
+        "insert into " + tableName + " (id, name, phone, dateField, integerField)"
+        + " values ('" + row1 + "', 'Jones May', '2134', '2009-01-24T04:21:23.400Z' , '1')");
+    try {
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
+      MockItem itemId1 = new MockItem.Builder(getItemId(row1))
+          .setTitle(row1)
+          .setSourceRepositoryUrl(row1)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+      mockItems = ImmutableList.of(getItemId(row1));
+      IndexingApplication dbConnector = runConnector(args);
+      Awaitility.await()
+          .atMost(CONNECTOR_RUN_TIME)
+          .pollInterval(CONNECTOR_RUN_POLL_INTERVAL)
+          .until(() -> ConnectorStats.getSuccessfulFullTraversalsCount() > 0);
+      testUtils.waitUntilEqual(getItemId(row1), itemId1.getItem());
+      executeDatabaseStatement(
+          dbConnection,
+          Collections.singletonList("insert into " + tableName + " (id, name, phone, dateField)"
+              + " values ('" + row2 + "', 'Aleks Smith', '0984', CURRENT_TIMESTAMP())"));
+      int traversalCount = ConnectorStats.getSuccessfulIncrementalTraversalsCount();
+      // Wait for 2 successful incremental traversal run, to ensure connector completes
+      // its incremental traversal after data update.
+      Awaitility.await()
+          .atMost(CONNECTOR_RUN_TIME)
+          .pollInterval(CONNECTOR_RUN_POLL_INTERVAL)
+          .until(() -> ConnectorStats
+              .getSuccessfulIncrementalTraversalsCount() > traversalCount + 2);
+      dbConnector.shutdown("Shutdown Initiated");
+      MockItem newItemId = new MockItem.Builder(getItemId(row2))
+          .setTitle(row2)
+          .setSourceRepositoryUrl(row2)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+      mockItems = ImmutableList.of(getItemId(row1), getItemId(row2));
+      testUtils.waitUntilEqual(getItemId(row1), itemId1.getItem());
+      testUtils.waitUntilEqual(getItemId(row2), newItemId.getItem());
+      } finally {
       v1Client.deleteItemsIfExist(mockItems);
     }
   }
