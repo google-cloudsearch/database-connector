@@ -37,11 +37,14 @@ import com.google.enterprise.cloudsearch.sdk.indexing.StructuredDataHelper;
 import com.google.enterprise.cloudsearch.sdk.indexing.TestUtils;
 import com.google.enterprise.cloudsearch.sdk.indexing.template.FullTraversalConnector;
 import com.google.enterprise.cloudsearch.sdk.sdk.ConnectorStats;
+import com.google.enterprise.cloudsearch.sdk.serving.SearchHelper;
+import com.google.enterprise.cloudsearch.sdk.serving.SearchTestUtils;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.GeneralSecurityException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -73,6 +76,10 @@ public class DatabaseConnectorIT {
   private static final String ROOT_URL_PROPERTY_NAME = qualifyTestProperty("rootUrl");
   private static final String SQL_SERVER_PARAMS_PROPERTY_NAME =
       qualifyTestProperty("dbSqlParameters");
+  private static final String APPLICATION_ID_PROPERTY_NAME =
+      qualifyTestProperty("searchApplicationId");
+  private static final String AUTH_INFO_PROPERTY_NAME =
+      qualifyTestProperty("authInfo");
   private static final Duration CONNECTOR_RUN_TIME = Duration.ONE_MINUTE;
   private static final Duration CONNECTOR_RUN_POLL_INTERVAL = Duration.FIVE_SECONDS;
   private static String dbSqlParameters;
@@ -81,6 +88,8 @@ public class DatabaseConnectorIT {
   private static Optional<String> rootUrl;
   private static CloudSearchService v1Client;
   private static TestUtils testUtils;
+  private static SearchHelper searchHelper;
+  private static SearchTestUtils searchUtil;
 
   private static class DatabaseConnectionParams {
     private final String dbUrl;
@@ -108,6 +117,9 @@ public class DatabaseConnectorIT {
     v1Client = new CloudSearchService(keyFilePath, indexingSourceId, rootUrl);
     StructuredDataHelper.verifyMockContentDatasourceSchema(v1Client.getSchema());
     testUtils = new TestUtils(v1Client);
+    String searchApplicationId = System.getProperty(APPLICATION_ID_PROPERTY_NAME);
+    String[] authInfo = System.getProperty(AUTH_INFO_PROPERTY_NAME).split(",");
+    searchHelper = SearchTestUtils.getSearchHelper(authInfo, searchApplicationId, rootUrl);
   }
 
   private DatabaseConnectionParams getDatabaseConnectionParams(Database databaseType)
@@ -174,7 +186,7 @@ public class DatabaseConnectorIT {
     return config;
   }
 
-  private static void validateInputParams() throws IOException {
+  private static void validateInputParams() throws IOException, GeneralSecurityException {
     String dataSourceId;
     Path serviceKeyPath;
     logger.log(Level.FINE, "Validating input parameters...");
@@ -763,6 +775,55 @@ public class DatabaseConnectorIT {
       testUtils.waitUntilEqual(getItemId(row2), newItemId.getItem());
       } finally {
       v1Client.deleteItemsIfExist(mockItems);
+    }
+  }
+
+  @Test
+  public void defaultAcl_verifyServing() throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    String row1 = "row1" + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql",
+        "Select id, textField as text, integerField as integer, booleanField as boolean,"
+        + " doubleField as double, timestampField as timestamp from " + tableName);
+    config.setProperty("db.allColumns",
+        "id, textField, integerField, booleanField, doubleField, timestampField");
+    config.setProperty("itemMetadata.objectType", "myMockDataObject");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty(
+        "defaultAcl.readers.users", "google:connectors1@connectstaging.10bot20.info");
+    config.setProperty("defaultAcl.public", "false");
+
+    List<String> query = ImmutableList.of(
+        "create table " + tableName + "(id varchar(50) unique not null,"
+        + " textField varchar(128), integerField integer(50), booleanField boolean,"
+        + " doubleField double, timestampField timestamp)",
+        "insert into " + tableName
+        + " (id, textField, integerField, booleanField, doubleField, timestampField) values ('"
+        + row1 + "', 'Jones May', '2134678', 'true', '2000', '1907-10-10T14:21:23.400Z')");
+    try {
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
+      runAwaitConnector(args);
+      MockItem itemId1 = new MockItem.Builder(getItemId(row1))
+          .setTitle(row1)
+          .setSourceRepositoryUrl("http://example.com/employee/" + row1)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .addValue("text", "Jones May")
+          .addValue("integer", "2134678")
+          .addValue("boolean", "true")
+          .addValue("timestamp", "1907-10-10T14:21:23.400Z")
+          .addValue("double", "2000.00")
+          .setObjectType("myMockDataObject")
+          .build();
+      verifyStructuredData(getItemId(row1), "myMockDataObject", itemId1.getItem());
+      searchUtil = new SearchTestUtils(searchHelper);
+      searchUtil.waitUntilItemServed(row1, row1);
+    } finally {
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(row1)));
     }
   }
 
