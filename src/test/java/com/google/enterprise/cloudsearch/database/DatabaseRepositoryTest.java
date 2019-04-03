@@ -71,29 +71,36 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collections;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Properties;
 import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicInteger;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
 /** Tests for the DatabaseRepository class. */
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class DatabaseRepositoryTest {
 
   private static final AtomicInteger databaseCount = new AtomicInteger();
@@ -117,6 +124,7 @@ public class DatabaseRepositoryTest {
 
   private static final byte[] NULL_TRAVERSAL_CHECKPOINT = null;
 
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
   @Rule public ExpectedException thrown = ExpectedException.none();
   @Rule public ResetConfigRule resetConfig = new ResetConfigRule();
   @Rule public SetupConfigRule setupConfig = SetupConfigRule.uninitialized();
@@ -1136,6 +1144,30 @@ public class DatabaseRepositoryTest {
         + "</body>\n</html>\n";
 
     validateResults(createSql, insertSql, expected);
+  }
+
+  @Test
+  @Parameters({
+    "date, {d \'2004-10-06\'}, 2004-10-06",
+    "time, {t \'09:15:30\'}, 09:15:30",
+    "timestamp, {ts \'2004-10-06 09:15:30.0\'}, 2004-10-06 09:15:30.0"
+  })
+  public void dateTimeValues_insertedCorrectly(String type, String value, String expected)
+      throws Exception {
+    String createSql = "create table testtable "
+        + "(id varchar(32) unique not null, name varchar(128), data " + type + ")";
+    String insertSql = "insert into testtable (id, name, data) "
+        + "values ('id1', 'Joe Smith', " + value + ")";
+
+    String result = "<!DOCTYPE html>\n<html lang='en'>\n<head>\n"
+        + "<meta http-equiv='Content-Type' content='text/html; charset=utf-8'/>\n"
+        + "<title>id1</title>\n</head>\n<body>\n"
+        + "<div id='id'>\n  <p>id:</p>\n  <h1>id1</h1>\n</div>\n"
+        + "<div id='data'>\n  <p>data:</p>\n  <p><small>" + expected + "</small></p>\n</div>\n"
+        + "<div id='name'>\n  <p>name:</p>\n  <p><small>Joe Smith</small></p>\n</div>\n"
+        + "</body>\n</html>\n";
+
+    validateResults(createSql, insertSql, result);
   }
 
   @Test
