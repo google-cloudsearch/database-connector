@@ -1707,6 +1707,372 @@ public class DatabaseRepositoryTest {
   }
 
   @Test
+  public void getAllDocs_spaceInTableName_succeeds() throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL, "select id from \"test table\"");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "id");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("create table \"test table\" (id varchar(32) unique not null)");
+        stmt.execute("insert into \"test table\" (id) values ('id1')");
+      }
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> allDocs =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        for (ApiOperation op : allDocs) {
+          RepositoryDoc record = (RepositoryDoc) op;
+          Item item = record.getItem();
+          assertEquals("id1", item.getName());
+        }
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
+  public void getAllDocs_quotesInTableName_succeeds() throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL, "select id from \"test \"\"table\"\"\"");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "id");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      try (Statement stmt = conn.createStatement()) {
+        String createString =
+            "create table \"test \"\"table\"\"\" (id varchar(32) unique not null)";
+        String insertString = "insert into \"test \"\"table\"\"\" (id) values ('id1')";
+        stmt.execute(createString);
+        stmt.execute(insertString);
+      }
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> allDocs =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        for (ApiOperation op : allDocs) {
+          RepositoryDoc record = (RepositoryDoc) op;
+          Item item = record.getItem();
+          assertEquals("id1", item.getName());
+        }
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
+  public void getAllDocs_euroInTableName_succeeds() throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL, "select id from testtabl\u20ac");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "id");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      try (Statement stmt = conn.createStatement()) {
+        String createString = "create table testtabl\u20ac (id varchar(32) unique not null)";
+        String insertString = "insert into testtabl\u20ac (id) values ('id1')";
+        stmt.execute(createString);
+        stmt.execute(insertString);
+      }
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> allDocs =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        for (ApiOperation op : allDocs) {
+          RepositoryDoc record = (RepositoryDoc) op;
+          Item item = record.getItem();
+          assertEquals("id1", item.getName());
+        }
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  private String getContentString(RepositoryDoc doc) throws IOException {
+    return CharStreams.toString(
+        new InputStreamReader(doc.getContent().getInputStream(), Charsets.UTF_8));
+  }
+
+  private String getExpectedContentString(String columnName, String columnValue) {
+    String output =
+        "<!DOCTYPE html>\n"
+        + "<html lang='en'>\n"
+        + "<head>\n"
+        + "<meta http-equiv='Content-Type' content='text/html; charset=utf-8'/>\n"
+        + "<title>" + columnValue + "</title>\n"
+        + "</head>\n"
+        + "<body>\n"
+        + "<div id='" + columnName + "'>\n"
+        + "  <p>" + columnName + ":</p>\n"
+        + "  <h1>" + columnValue + "</h1>\n"
+        + "</div>\n"
+        + "</body>\n"
+        + "</html>\n";
+    return output;
+  }
+
+  @Test
+  public void getAllDocs_spaceInColumnName_succeeds() throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id with space");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id with space");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL, "select \"id with space\" from testtable");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "id with space");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id with space");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("create table testtable (\"id with space\" varchar(32) unique not null)");
+        stmt.execute("insert into testtable (\"id with space\") values ('id1')");
+      }
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> allDocs =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        for (ApiOperation op : allDocs) {
+          RepositoryDoc record = (RepositoryDoc) op;
+          Item item = record.getItem();
+          assertEquals("id1", item.getName());
+          // The column name is used as an id in the generated html, though id values
+          // aren't technically allowed to contain spaces.
+          assertEquals(getExpectedContentString("id with space", "id1"), getContentString(record));
+        }
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
+  public void getAllDocs_spaceInColumnNameWithAlias_succeeds() throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "idalias");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "idalias");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL,
+        "select \"id with space\" as idalias from testtable");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "idalias");
+    config.put(CONFIG_TITLE_DB_FORMAT, "idalias");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("create table testtable (\"id with space\" varchar(32) unique not null)");
+        stmt.execute("insert into testtable (\"id with space\") values ('id1')");
+      }
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> allDocs =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        for (ApiOperation op : allDocs) {
+          RepositoryDoc record = (RepositoryDoc) op;
+          Item item = record.getItem();
+          assertEquals("id1", item.getName());
+          assertEquals(getExpectedContentString("idalias", "id1"), getContentString(record));
+        }
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
+  public void getAllDocs_spaceInAlias_succeeds() throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id alias");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id alias");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL,
+        "select id  as \"id alias\" from testtable");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "id alias");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id alias");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("create table testtable (id varchar(32) unique not null)");
+        stmt.execute("insert into testtable (id) values ('id1')");
+      }
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> allDocs =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        for (ApiOperation op : allDocs) {
+          RepositoryDoc record = (RepositoryDoc) op;
+          Item item = record.getItem();
+          assertEquals("id1", item.getName());
+          assertEquals(getExpectedContentString("id alias", "id1"), getContentString(record));
+        }
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
+  public void getAllDocs_quotesInColumnName_failsValidation() throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id with \"quotes\"");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id with \"quotes\"");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL,
+        "select \"id with \"\"quotes\"\"\" from testtable");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "id with \"quotes\"");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id with \"quotes\"");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    // Fails because the validation checks for 'id with "quotes"' in the select statement
+    // but the statement contains 'id with ""quotes""'.
+    thrown.expect(InvalidConfigurationException.class);
+    thrown.expectMessage("Missing column names in main SQL query: [id with \"quotes\"]");
+    dbRepository.init(repositoryContextMock);
+
+    // TODO(gemerson): Leaving this here for now in case we decide to change the validation
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute(
+            "create table testtable (\"id with \"\"quotes\"\"\" varchar(32) unique not null)");
+        stmt.execute("insert into testtable (\"id with \"\"quotes\"\"\") values ('id1')");
+      }
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> allDocs =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        for (ApiOperation op : allDocs) {
+          RepositoryDoc record = (RepositoryDoc) op;
+          Item item = record.getItem();
+          assertEquals("id1", item.getName());
+          assertEquals(getExpectedContentString("id with &quot;quotes&quot;", "id1"),
+              getContentString(record));
+        }
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
+  public void getAllDocs_euroInColumnName_succeeds() throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "idWith\u20acuro");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "idWith\u20acuro");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL, "select \"idWith\u20acuro\" from testtable");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "idWith\u20acuro");
+    config.put(CONFIG_TITLE_DB_FORMAT, "idWith\u20acuro");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("create table testtable (\"idWith\u20acuro\" varchar(32) unique not null)");
+        stmt.execute("insert into testtable (\"idWith\u20acuro\") values ('id1')");
+      }
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> allDocs =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        for (ApiOperation op : allDocs) {
+          RepositoryDoc record = (RepositoryDoc) op;
+          Item item = record.getItem();
+          assertEquals("id1", item.getName());
+          assertEquals(getExpectedContentString("idWith\u20acuro", "id1"),
+              getContentString(record));
+        }
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
   public void testGetChangesNoInitialCheckpoint() throws Exception {
     setupConfiguration(getUrl(), "");
     InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
