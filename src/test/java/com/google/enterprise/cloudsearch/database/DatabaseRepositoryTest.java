@@ -2674,4 +2674,50 @@ public class DatabaseRepositoryTest {
     assertArrayEquals("getCheckpoint", expected.getCheckpoint(), actual.getCheckpoint());
     assertEquals("hasMore", expected.hasMore(), actual.hasMore());
   }
+
+  @Test
+  public void invalidColumnName_shouldThrowException()
+      throws Exception {
+    String createSql = "create table testtable "
+        + "(id varchar(32) unique not null, name varchar(128))";
+    String insertSql = "insert into testtable (id, name) "
+        + "values ('id1', 'Joe Smith')";
+
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id, invalidcolumn");
+    config.put(ColumnManager.DB_CONTENT_COLUMNS, "*");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL,
+        "select id, invalidcolumn from testtable");
+    config.put(UrlBuilder.CONFIG_FORMAT, "{0}");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "id");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      Statement stmt = conn.createStatement();
+      stmt.execute(createSql);
+      stmt.execute(insertSql);
+      stmt.close();
+
+      try {
+        dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT);
+      } catch (RepositoryException e) {
+        Throwable t = e.getCause();
+        assertTrue(t instanceof SQLException);
+        assertTrue(t.getMessage().contains("Column \"invalidcolumn\" not found"));
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
 }
