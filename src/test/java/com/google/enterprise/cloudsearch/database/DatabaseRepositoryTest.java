@@ -2720,4 +2720,71 @@ public class DatabaseRepositoryTest {
       factory.shutdown();
     }
   }
+
+  @Parameters({
+    "id, name, data",
+    "ID, NAME, DATA",
+    "Id, Name, Data"
+  })
+  public void caseSensitiveColumnName_shouldSucceed(String id, String name, String data)
+      throws Exception {
+    String createSql = "create table testtable ("
+        + "\"" + id + "\" varchar(32) unique not null, "
+        + "\"" + name + "\" varchar(128), "
+        + "\"" + data + "\" varchar(128))";
+    String insertSql = "insert into testtable (\"" + id + "\", \"" + name + "\", \"" + data + "\")"
+        + "values ('id1', 'Joe Smith', 'Column name case Test')";
+
+    String expected = "<!DOCTYPE html>\n<html lang='en'>\n<head>\n"
+        + "<meta http-equiv='Content-Type' content='text/html; charset=utf-8'/>\n"
+        + "<title>id1</title>\n</head>\n<body>\n"
+        + "<div id='" + id + "'>\n  <p>"
+        + id + ":</p>\n  <h1>id1</h1>\n</div>\n"
+        + "<div id='" + data + "'>\n  <p>"
+        + data + ":</p>\n  <p><small>Column name case Test</small></p>\n</div>\n"
+        + "<div id='" + name + "'>\n  <p>"
+        + name + ":</p>\n  <p><small>Joe Smith</small></p>\n</div>\n"
+        + "</body>\n</html>\n";
+
+    Properties config = new Properties();
+    String dbUrl = "jdbc:h2:mem:" + databaseCount.getAndIncrement();
+    config.put(DatabaseConnectionFactory.DB_URL, dbUrl);
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, id);
+    config.put(ColumnManager.DB_ALL_COLUMNS, id + ", " + name +  ", " + data);
+    config.put(ColumnManager.DB_CONTENT_COLUMNS, "*");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL,
+        "select \"" + id + "\", \"" + name +  "\", \"" + data + "\" from testtable");
+    config.put(UrlBuilder.CONFIG_FORMAT, "{0}");
+    config.put(UrlBuilder.CONFIG_COLUMNS, id);
+    config.put(CONFIG_TITLE_DB_FORMAT, id);
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      Statement stmt = conn.createStatement();
+      stmt.execute(createSql);
+      stmt.execute(insertSql);
+      stmt.close();
+
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> records =
+               dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        RepositoryDoc record = (RepositoryDoc) records.iterator().next();
+        String html = CharStreams.toString(
+            new InputStreamReader(record.getContent().getInputStream(), Charsets.UTF_8));
+        assertEquals(expected, html);
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
 }
