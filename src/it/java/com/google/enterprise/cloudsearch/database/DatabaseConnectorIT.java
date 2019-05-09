@@ -28,7 +28,9 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.enterprise.cloudsearch.sdk.Util;
 import com.google.enterprise.cloudsearch.sdk.config.Configuration.ResetConfigRule;
+import com.google.enterprise.cloudsearch.sdk.indexing.Acl;
 import com.google.enterprise.cloudsearch.sdk.indexing.CloudSearchService;
+import com.google.enterprise.cloudsearch.sdk.indexing.DefaultAcl;
 import com.google.enterprise.cloudsearch.sdk.indexing.DefaultAcl.DefaultAclMode;
 import com.google.enterprise.cloudsearch.sdk.indexing.IndexingApplication;
 import com.google.enterprise.cloudsearch.sdk.indexing.IndexingItemBuilder.ItemType;
@@ -78,8 +80,10 @@ public class DatabaseConnectorIT {
       qualifyTestProperty("dbSqlParameters");
   private static final String APPLICATION_ID_PROPERTY_NAME =
       qualifyTestProperty("searchApplicationId");
-  private static final String AUTH_INFO_PROPERTY_NAME =
-      qualifyTestProperty("authInfo");
+  private static final String AUTH_INFO_USER1_PROPERTY_NAME =
+      qualifyTestProperty("authInfoUser1");
+  private static final String AUTH_INFO_USER2_PROPERTY_NAME =
+      qualifyTestProperty("authInfoUser2");
   private static final Duration CONNECTOR_RUN_TIME = Duration.ONE_MINUTE;
   private static final Duration CONNECTOR_RUN_POLL_INTERVAL = Duration.FIVE_SECONDS;
   private static String dbSqlParameters;
@@ -88,8 +92,11 @@ public class DatabaseConnectorIT {
   private static Optional<String> rootUrl;
   private static CloudSearchService v1Client;
   private static TestUtils testUtils;
-  private static SearchHelper searchHelper;
   private static SearchTestUtils searchUtil;
+  private static SearchTestUtils searchUtilUser1;
+  private static SearchTestUtils searchUtilUser2;
+  private static String testUser1;
+  private static String testUser2;
 
   private static class DatabaseConnectionParams {
     private final String dbUrl;
@@ -118,8 +125,18 @@ public class DatabaseConnectorIT {
     StructuredDataHelper.verifyMockContentDatasourceSchema(v1Client.getSchema());
     testUtils = new TestUtils(v1Client);
     String searchApplicationId = System.getProperty(APPLICATION_ID_PROPERTY_NAME);
-    String[] authInfo = System.getProperty(AUTH_INFO_PROPERTY_NAME).split(",");
-    searchHelper = SearchTestUtils.getSearchHelper(authInfo, searchApplicationId, rootUrl);
+
+    String[] authInfoUser1 = System.getProperty(AUTH_INFO_USER1_PROPERTY_NAME).split(",");
+    SearchHelper searchHelperUser1 =
+        SearchTestUtils.getSearchHelper(authInfoUser1, searchApplicationId, rootUrl);
+    searchUtilUser1 = new SearchTestUtils(searchHelperUser1);
+    testUser1 = authInfoUser1[0];
+
+    String[] authInfoUser2 = System.getProperty(AUTH_INFO_USER2_PROPERTY_NAME).split(",");
+    SearchHelper searchHelperUser2 =
+        SearchTestUtils.getSearchHelper(authInfoUser2, searchApplicationId, rootUrl);
+    searchUtilUser2 = new SearchTestUtils(searchHelperUser2);
+    testUser2 = authInfoUser2[0];
   }
 
   private DatabaseConnectionParams getDatabaseConnectionParams(Database databaseType)
@@ -820,8 +837,54 @@ public class DatabaseConnectorIT {
           .setObjectType("myMockDataObject")
           .build();
       verifyStructuredData(getItemId(row1), "myMockDataObject", itemId1.getItem());
-      searchUtil = new SearchTestUtils(searchHelper);
-      searchUtil.waitUntilItemServed(row1, row1);
+      searchUtilUser1.waitUntilItemServed(row1, row1);
+    } finally {
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(row1)));
+    }
+  }
+
+  @Test
+  public void defaultAclMode_override_verifyServing()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    String row1 = "row1" + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "Select id, textField as text from " + tableName);
+    config.setProperty("db.allColumns", "id, textField");
+    config.setProperty("itemMetadata.objectType", "myMockDataObject");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+
+    config.setProperty(DefaultAcl.DEFAULT_ACL_READERS_USERS, "google:" + testUser1);
+    config.setProperty(DefaultAcl.DEFAULT_ACL_PUBLIC, "false");
+    config.setProperty(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.OVERRIDE.toString());
+    config.setProperty(DefaultAcl.DEFAULT_ACL_NAME, "mockdb_overrideAcl_" + Util.getRandomId());
+    Acl acl = new Acl.Builder()
+        .setReaders(Collections.singletonList(Acl.getGoogleUserPrincipal(testUser2)))
+        .build();
+
+    List<String> query = ImmutableList.of(
+        "create table " + tableName + "(id varchar(50) unique not null, textField varchar(128))",
+        "insert into " + tableName + " (id, textField) values ('" + row1 + "', 'Jones May')"
+        );
+
+    try {
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
+      runAwaitConnector(args);
+      MockItem itemId1 = new MockItem.Builder(getItemId(row1))
+          .setTitle(row1)
+          .setSourceRepositoryUrl("http://example.com/employee/" + row1)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .addValue("text", "Jones May")
+          .setObjectType("myMockDataObject")
+          .setAcl(acl)
+          .build();
+      verifyStructuredData(getItemId(row1), "myMockDataObject", itemId1.getItem());
+      searchUtilUser1.waitUntilItemServed(row1, row1);
+      searchUtilUser2.waitUntilItemNotServed(row1, row1);
     } finally {
       v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(row1)));
     }
