@@ -281,9 +281,8 @@ class DatabaseRepository implements Repository {
      *
      * @param allColumnValues the database record key/values from the result set
      * @return repository object
-     * @throws IOException when the repository has a record fetch error
      */
-    abstract T createResultSetRecord(Map<String, Object> allColumnValues) throws IOException;
+    abstract T createResultSetRecord(Map<String, Object> allColumnValues);
 
     @Override
     public byte[] getCheckpoint() {
@@ -335,8 +334,6 @@ class DatabaseRepository implements Repository {
         if (hasNext()) {
           try {
             return createResultSetRecord(access.getAllColumnValues());
-          } catch (IOException e) {
-            throw new RuntimeException("Error creating record from result set.", e);
           } finally {
             nextLoaded = false;
           }
@@ -363,7 +360,7 @@ class DatabaseRepository implements Repository {
      * @return repository document object
      */
     @Override
-    RepositoryDoc createResultSetRecord(Map<String, Object> allColumnValues) throws IOException {
+    RepositoryDoc createResultSetRecord(Map<String, Object> allColumnValues) {
       return new RepositoryDoc.Builder()
           .setItem(createItem(allColumnValues, checkpoint))
           .setContent(createContent(allColumnValues), ContentFormat.HTML)
@@ -390,8 +387,7 @@ class DatabaseRepository implements Repository {
      * @throws IOException when the repository has a document fetch error
      */
     @Override
-    RepositoryDoc createResultSetRecord(Map<String, Object> allColumnValues)
-        throws IOException {
+    RepositoryDoc createResultSetRecord(Map<String, Object> allColumnValues) {
       // TODO(normang): Future: if Blob is defined content columns may be used for metadata content.
       RepositoryDoc.Builder document =
           new RepositoryDoc.Builder()

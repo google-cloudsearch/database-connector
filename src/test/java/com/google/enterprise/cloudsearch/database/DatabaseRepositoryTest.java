@@ -2512,7 +2512,7 @@ public class DatabaseRepositoryTest {
   }
 
   @Test
-  public void testNextException() throws SQLException, IOException {
+  public void next_accessNextReturnsFalse_throwsException() throws SQLException, IOException {
     Properties config = new Properties();
     setAllMandatory(config);
     config.put(DatabaseConnectionFactory.DB_URL, getUrl());
@@ -2532,8 +2532,15 @@ public class DatabaseRepositoryTest {
     }
   }
 
+  private ImmutableList<Class<? extends Exception>>
+        parametersFor_next_accessNextThrowsException_throwsException() {
+    return ImmutableList.of(SQLException.class, IOException.class);
+  }
+
   @Test
-  public void testNextSqlException() throws SQLException, IOException {
+  @Parameters(method = "parametersFor_next_accessNextThrowsException_throwsException")
+  public void next_accessNextThrowsException_throwsException(Class<? extends Exception> exception)
+      throws SQLException, IOException {
     Properties config = new Properties();
     setAllMandatory(config);
     config.put(DatabaseConnectionFactory.DB_URL, getUrl());
@@ -2542,7 +2549,7 @@ public class DatabaseRepositoryTest {
     when(helperMock.getConnectionFactory()).thenReturn(factory);
     DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
     dbRepository.init(repositoryContextMock);
-    when(databaseAccessMock.next()).thenThrow(SQLException.class);
+    when(databaseAccessMock.next()).thenThrow(exception);
     try (CheckpointCloseableIterable<ApiOperation> res =
         dbRepository.getRepositoryDocIterable(databaseAccessMock, new FullCheckpoint())) {
       thrown.expect(NoSuchElementException.class);
@@ -2564,11 +2571,10 @@ public class DatabaseRepositoryTest {
     DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
     dbRepository.init(repositoryContextMock);
     when(databaseAccessMock.next()).thenReturn(true);
-    when(databaseAccessMock.getAllColumnValues()).thenThrow(IOException.class);
+    when(databaseAccessMock.getAllColumnValues()).thenThrow(IllegalStateException.class);
     try (CheckpointCloseableIterable<ApiOperation> res =
         dbRepository.getRepositoryDocIterable(databaseAccessMock, new FullCheckpoint())) {
-      thrown.expect(RuntimeException.class);
-      thrown.expectMessage("Error creating record");
+      thrown.expect(IllegalStateException.class);
       res.iterator().next();
     } finally {
       dbRepository.close();
