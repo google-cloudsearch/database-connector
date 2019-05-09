@@ -122,10 +122,9 @@ public class DatabaseConnectorIT {
   public static void initialize() throws Exception {
     validateInputParams();
     v1Client = new CloudSearchService(keyFilePath, indexingSourceId, rootUrl);
-    StructuredDataHelper.verifyMockContentDatasourceSchema(v1Client.getSchema());
     testUtils = new TestUtils(v1Client);
     String searchApplicationId = System.getProperty(APPLICATION_ID_PROPERTY_NAME);
-
+    
     String[] authInfoUser1 = System.getProperty(AUTH_INFO_USER1_PROPERTY_NAME).split(",");
     SearchHelper searchHelperUser1 =
         SearchTestUtils.getSearchHelper(authInfoUser1, searchApplicationId, rootUrl);
