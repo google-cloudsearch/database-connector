@@ -41,12 +41,13 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
 /** Tests for the ColumnManager class. */
-//Ignore unnecessary stubbings.
-@RunWith(MockitoJUnitRunner.Silent.class)
+@RunWith(JUnit4.class)
 public class ColumnManagerTest {
 
   private static final boolean WITH_TIMESTAMP = true;
@@ -60,6 +61,7 @@ public class ColumnManagerTest {
   private static final String CONFIG_LOW_DB_FORMAT =
       "contentTemplate." + ColumnManager.DB_CONTENT_TEMPLATE_NAME + ".quality.low";
 
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
   @Rule public ExpectedException thrown = ExpectedException.none();
   @Rule public ResetConfigRule resetConfig = new ResetConfigRule();
   @Rule public SetupConfigRule setupConfig = SetupConfigRule.uninitialized();
