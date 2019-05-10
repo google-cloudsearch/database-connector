@@ -501,7 +501,7 @@ public class DatabaseConnectorIT {
     String tableName = name.getMethodName() + randomId;
     Properties config = new Properties();
     config.setProperty("db.allRecordsSql", "Select id, textField as text, intField as integer,"
-        + " booleanField as boolean, floatField as double, dateField as date,"
+        + " booleanField as boolean, floatField as float, dateField as date,"
         + " enumField as enum from " + tableName);
     config.setProperty("db.allColumns", "id, textField, intField, booleanField, floatField,"
         + " dateField, enumField");
@@ -518,13 +518,13 @@ public class DatabaseConnectorIT {
         + " floatField float, dateField date, enumField int)");
     query.add("insert into " + tableName
         + " (id, textField, intField, booleanField, floatField, dateField,"
-        + " enumField) values ('" + row1 + "', 'Jones May', '2134678', 'true', '2000', "
+        + " enumField) values ('" + row1 + "', 'Jones May', '2134678', 'true', '2000.00', "
             + "'2007-11-20', '2')");
     query.add("insert into " + tableName
         + " (id, textField, intField, booleanField, floatField, dateField,"
         + " enumField) values ('" + row2 + "', 'Joe Smith', '-9846', 'false', '12000.00',"
             + " '1987-02-28', '1')");
-    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
     String[] args = setupDataAndConfiguration(dbConnection, config, query);
     MockItem itemId1 = new MockItem.Builder(getItemId(row1))
         .setTitle(row1)
@@ -534,8 +534,8 @@ public class DatabaseConnectorIT {
         .addValue("text", "Jones May")
         .addValue("integer", "2134678")
         .addValue("boolean", "true")
+        .addValue("float", "2000.00")
         .addValue("date", "2007-11-20")
-        .addValue("double", "2000.00")
         .setObjectType("myMockDataObject")
         .addValue("enum", 2)
         .build();
@@ -547,8 +547,8 @@ public class DatabaseConnectorIT {
         .addValue("text", "Joe Smith")
         .addValue("integer", "-9846")
         .addValue("boolean", "false")
+        .addValue("float", "12000.00")
         .addValue("date", "1987-02-28")
-        .addValue("double", "12000.00")
         .setObjectType("myMockDataObject")
         .addValue("enum", 1)
         .build();
