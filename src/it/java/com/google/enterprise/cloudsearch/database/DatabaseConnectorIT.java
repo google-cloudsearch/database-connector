@@ -124,7 +124,7 @@ public class DatabaseConnectorIT {
     v1Client = new CloudSearchService(keyFilePath, indexingSourceId, rootUrl);
     testUtils = new TestUtils(v1Client);
     String searchApplicationId = System.getProperty(APPLICATION_ID_PROPERTY_NAME);
-    
+
     String[] authInfoUser1 = System.getProperty(AUTH_INFO_USER1_PROPERTY_NAME).split(",");
     SearchHelper searchHelperUser1 =
         SearchTestUtils.getSearchHelper(authInfoUser1, searchApplicationId, rootUrl);
@@ -296,7 +296,7 @@ public class DatabaseConnectorIT {
         + " timestampField as timestamp, enumField as enum from " + tableName);
     config.setProperty("db.allColumns", "id, textField, integerField, booleanField, doubleField,"
         + " dateField, timestampField, enumField");
-    config.setProperty("itemMetadata.objectType", "myMockDataObject");
+    config.setProperty("itemMetadata.objectType.defaultValue", "myMockDataObject");
     config.setProperty("url.columns", "id");
     config.setProperty("url.format", "http://example.com/employee/{0}");
     String row1 = "s1" + randomId;
@@ -444,7 +444,7 @@ public class DatabaseConnectorIT {
     config.setProperty("db.allRecordsSql", "Select id, arrayTextField as text,"
         + " arrayIntegerField as integer from " + tableName);
     config.setProperty("db.allColumns", "id, arrayTextField, arrayIntegerField");
-    config.setProperty("itemMetadata.objectType", "myMockDataObject");
+    config.setProperty("itemMetadata.objectType.defaultValue", "myMockDataObject");
     config.setProperty("url.columns", "id");
     config.setProperty("url.format", "http://example.com/employee/{0}");
     String row1 = "row1" + randomId;
@@ -507,7 +507,7 @@ public class DatabaseConnectorIT {
         + " dateField, enumField");
     config.setProperty("url.columns", "id");
     config.setProperty("url.format", "http://example.com/employee/{0}");
-    config.setProperty("itemMetadata.objectType", "myMockDataObject");
+    config.setProperty("itemMetadata.objectType.defaultValue", "myMockDataObject");
 
     String row1 = "row1" + randomId;
     String row2 = "row2" + randomId;
@@ -805,7 +805,7 @@ public class DatabaseConnectorIT {
         + " doubleField as double, timestampField as timestamp from " + tableName);
     config.setProperty("db.allColumns",
         "id, textField, integerField, booleanField, doubleField, timestampField");
-    config.setProperty("itemMetadata.objectType", "myMockDataObject");
+    config.setProperty("itemMetadata.objectType.defaultValue", "myMockDataObject");
     config.setProperty("url.columns", "id");
     config.setProperty("url.format", "http://example.com/employee/{0}");
     config.setProperty(
@@ -851,7 +851,7 @@ public class DatabaseConnectorIT {
     Properties config = new Properties();
     config.setProperty("db.allRecordsSql", "Select id, textField as text from " + tableName);
     config.setProperty("db.allColumns", "id, textField");
-    config.setProperty("itemMetadata.objectType", "myMockDataObject");
+    config.setProperty("itemMetadata.objectType.defaultValue", "myMockDataObject");
     config.setProperty("url.columns", "id");
     config.setProperty("url.format", "http://example.com/employee/{0}");
 
@@ -886,6 +886,79 @@ public class DatabaseConnectorIT {
       searchUtilUser2.waitUntilItemNotServed(row1, row1);
     } finally {
       v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(row1)));
+    }
+  }
+
+  @Test
+  public void queryPagination_offset() throws IOException, SQLException, InterruptedException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty(
+        "db.allRecordsSql", "Select id, name, phone from " + tableName + " OFFSET ? LIMIT 2");
+    config.setProperty("db.allColumns", "id, name, phone");
+    config.setProperty("db.allRecordsSql.pagination", "offset");
+    String row1 = "x1" + randomId;
+    String row2 = "x2" + randomId;
+    String row3 = "x3" + randomId;
+    List<String> query = new ArrayList<>();
+    List<String> mockItems = new ArrayList<>();
+    query.add(
+        "create table "
+            + tableName
+            + "(id varchar(32) unique not null, name varchar(128), phone varchar(16))");
+    query.add(
+        "insert into "
+            + tableName
+            + " (id, name, phone)"
+            + " values ('"
+            + row1
+            + "', 'Jones May', '2134')");
+    query.add(
+        "insert into "
+            + tableName
+            + " (id, name, phone)"
+            + " values ('"
+            + row2
+            + "', 'Joe Smith', '9848')");
+    query.add(
+        "insert into "
+            + tableName
+            + " (id, name, phone)"
+            + " values ('"
+            + row3
+            + "', 'Mike Brown', '3476')");
+    try {
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
+      MockItem itemId1 =
+          new MockItem.Builder(getItemId(row1))
+              .setTitle(row1)
+              .setSourceRepositoryUrl(row1)
+              .setContentLanguage("en-US")
+              .setItemType(ItemType.CONTENT_ITEM.toString())
+              .build();
+      MockItem itemId2 =
+          new MockItem.Builder(getItemId(row2))
+              .setTitle(row2)
+              .setSourceRepositoryUrl(row2)
+              .setContentLanguage("en-US")
+              .setItemType(ItemType.CONTENT_ITEM.toString())
+              .build();
+      MockItem itemId3 =
+          new MockItem.Builder(getItemId(row3))
+              .setTitle(row3)
+              .setSourceRepositoryUrl(row3)
+              .setContentLanguage("en-US")
+              .setItemType(ItemType.CONTENT_ITEM.toString())
+              .build();
+      mockItems.addAll(asList(getItemId(row1), getItemId(row2), getItemId(row3)));
+      runAwaitConnector(args);
+      testUtils.waitUntilEqual(getItemId(row1), itemId1.getItem());
+      testUtils.waitUntilEqual(getItemId(row2), itemId2.getItem());
+      testUtils.waitUntilEqual(getItemId(row3), itemId3.getItem());
+    } finally {
+      v1Client.deleteItemsIfExist(mockItems);
     }
   }
 
