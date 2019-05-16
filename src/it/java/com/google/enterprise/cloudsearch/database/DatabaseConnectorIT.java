@@ -19,10 +19,12 @@ package com.google.enterprise.cloudsearch.database;
 import static com.google.enterprise.cloudsearch.sdk.TestProperties.SERVICE_KEY_PROPERTY_NAME;
 import static com.google.enterprise.cloudsearch.sdk.TestProperties.qualifyTestProperty;
 import static java.util.Arrays.asList;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.google.api.services.cloudsearch.v1.model.Item;
+import com.google.api.services.cloudsearch.v1.model.ItemAcl;
 import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
@@ -52,6 +54,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -837,6 +840,49 @@ public class DatabaseConnectorIT {
           .build();
       verifyStructuredData(getItemId(row1), "myMockDataObject", itemId1.getItem());
       searchUtilUser1.waitUntilItemServed(row1, row1);
+    } finally {
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(row1)));
+    }
+  }
+
+  @Test
+  public void defaultAclMode_append_verifyServing()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    String row1 = "row1" + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "select id, textField as text, "
+        + "readers_users from " + tableName);
+    config.setProperty("db.allColumns", "id, textField, readers_users");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty(DefaultAcl.DEFAULT_ACL_READERS_USERS, "google:" + testUser1);
+    config.setProperty(DefaultAcl.DEFAULT_ACL_PUBLIC, "false");
+    config.setProperty(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.APPEND.toString());
+    config.setProperty(DefaultAcl.DEFAULT_ACL_NAME, "mockdb_appendAcl_" + Util.getRandomId());
+
+    List<String> query = ImmutableList.of(
+        "create table " + tableName + "(id varchar(50) unique not null, textField varchar(128), "
+            + "readers_users varchar(128))",
+        "insert into " + tableName + " (id, textField, readers_users) "
+            + "values ('" + row1 + "', 'Jones May', " + "'google:" + testUser2 + "'" + ")"
+        );
+
+    try {
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
+      runAwaitConnector(args);
+
+      ItemAcl expectedAcl =
+          new ItemAcl()
+              .setReaders(
+                  Arrays.asList(
+                      Acl.getGoogleUserPrincipal(testUser2),
+                      Acl.getGoogleUserPrincipal(testUser1)));
+      assertEquals(expectedAcl, v1Client.getItem(getItemId(row1)).getAcl());
+      searchUtilUser1.waitUntilItemServed(row1, row1);
+      searchUtilUser2.waitUntilItemServed(row1, row1);
     } finally {
       v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(row1)));
     }
