@@ -71,17 +71,13 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Calendar;
 import java.util.Collections;
-import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -2780,6 +2776,130 @@ public class DatabaseRepositoryTest {
         String html = CharStreams.toString(
             new InputStreamReader(record.getContent().getInputStream(), Charsets.UTF_8));
         assertEquals(expected, html);
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
+  // Test scenario here should be classified as invalid configuration. This is a placeholder test
+  // that validates current implementation which allows using blob columns in unique key.
+  public void blobColumn_uniqueKey_isAllowed() throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "blob_data");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id, name, blob_data");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL, "select id, name, blob_data from testtable");
+    config.put(ColumnManager.DB_BLOB_COLUMN, "blob_data");
+    config.put(ColumnManager.DB_CONTENT_COLUMNS, "*");
+    config.put(UrlBuilder.CONFIG_FORMAT, "{0}");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "name");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    // create target for verification
+    String targetContent = "This is some blob content." + '\0' + '\t';
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      PreparedStatement stmt =
+          conn.prepareStatement(
+              "create table testtable "
+                  + "(id varchar(32) unique not null, name varchar(128), blob_data blob)");
+      stmt.execute();
+      stmt.close();
+      stmt =
+          conn.prepareStatement(
+              "insert into testtable (id, name, blob_data) values ('id1', 'Joe Smith', ?)");
+      Blob targetBlob = conn.createBlob();
+      targetBlob.setBytes(1, targetContent.getBytes(UTF_8));
+      stmt.setBlob(1, targetBlob);
+      stmt.execute();
+      stmt.close();
+      targetBlob.free();
+
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> records =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        RepositoryDoc record = (RepositoryDoc) records.iterator().next();
+        String html =
+            CharStreams.toString(
+                new InputStreamReader(record.getContent().getInputStream(), Charsets.UTF_8));
+        assertEquals(targetContent, html);
+        String itemName = record.getItem().getName();
+        assertTrue(
+            String.format(
+                "Item name should start with [B@ as default implementation "
+                    + "for byte[].toString(). Instead name is [%s]",
+                itemName),
+            itemName.startsWith("[B@"));
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
+  // Test scenario here should be classified as invalid configuration. This is a placeholder test
+  // that validates current implementation which allows binary columns in URL.
+  public void varbinary_urlField_isAllowed() throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id, name, binary_data");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL, "select id, name, binary_data from testtable");
+    config.put(ColumnManager.DB_BLOB_COLUMN, "binary_data");
+    config.put(ColumnManager.DB_CONTENT_COLUMNS, "*");
+    config.put(UrlBuilder.CONFIG_FORMAT, "http://whybinary.com/{0}");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "binary_data");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    // create target for verification
+    String targetContent = "This is some binary content.";
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      PreparedStatement stmt =
+          conn.prepareStatement(
+              "create table testtable "
+                  + "(id varchar(32) unique not null, name varchar(128), binary_data varbinary)");
+      stmt.execute();
+      stmt.close();
+      stmt =
+          conn.prepareStatement(
+              "insert into testtable (id, name, binary_data) values "
+                  + "('id1', 'Joe Smith', STRINGTOUTF8('This is some binary content.'))");
+      stmt.execute();
+      stmt.close();
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> records =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        RepositoryDoc record = (RepositoryDoc) records.iterator().next();
+        String html =
+            CharStreams.toString(
+                new InputStreamReader(record.getContent().getInputStream(), Charsets.UTF_8));
+        assertEquals(targetContent, html);
+        String sourceRepositoryUrl = record.getItem().getMetadata().getSourceRepositoryUrl();
+        assertTrue(
+            String.format(
+                "Item URL should start with http://whybinary.com/[B@ as default implementation "
+                    + "for byte[].toString(). Instead URL is [%s]",
+                sourceRepositoryUrl),
+            sourceRepositoryUrl.startsWith("http://whybinary.com/[B@"));
       }
     } finally {
       factory.releaseConnection(conn);
