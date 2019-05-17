@@ -18,10 +18,13 @@ package com.google.enterprise.cloudsearch.database;
 
 import static com.google.enterprise.cloudsearch.sdk.TestProperties.SERVICE_KEY_PROPERTY_NAME;
 import static com.google.enterprise.cloudsearch.sdk.TestProperties.qualifyTestProperty;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static java.util.Arrays.asList;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeThat;
 
 import com.google.api.services.cloudsearch.v1.model.Item;
 import com.google.api.services.cloudsearch.v1.model.ItemAcl;
@@ -144,13 +147,12 @@ public class DatabaseConnectorIT {
   private DatabaseConnectionParams getDatabaseConnectionParams(Database databaseType)
       throws IOException {
     if (databaseType == Database.SQLSERVER) {
+      assumeThat("Invalid connection params for SQL Server. " + getUsageString(),
+          dbSqlParameters, notNullValue());
       List<String> params =
           Splitter.on(",").trimResults().omitEmptyStrings().splitToList(dbSqlParameters);
-      if (params.size() != 3) {
-        logger.log(Level.SEVERE, getUsageString());
-        throw new IllegalArgumentException(
-            "Invalid connection params for SQL Server -" + dbSqlParameters);
-      }
+      assumeThat("Invalid connection params for SQL Server. " + getUsageString(),
+          params.size(), equalTo(3));
       return new DatabaseConnectionParams(params.get(0), params.get(1), params.get(2));
     } else {
       String dbUrl =
