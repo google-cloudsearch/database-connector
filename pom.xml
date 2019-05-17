@@ -184,6 +184,10 @@
           won't include any frames in the code under test, which makes failures harder to
           debug. -->
           <trimStackTrace>false</trimStackTrace>
+          <!-- additionalClasspathDir to include jdbc driver jar file. -->
+          <additionalClasspathElements>
+              <additionalClasspathElement>${additionalClasspathDir}</additionalClasspathElement>
+          </additionalClasspathElements>
         </configuration>
         <executions>
           <execution>
@@ -234,12 +238,6 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>com.microsoft.sqlserver</groupId>
-      <artifactId>sqljdbc4</artifactId>
-      <version>4.0</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
       <version>4.12</version>
@@ -267,18 +265,6 @@
       <artifactId>google-cloudsearch-connector-it-common</artifactId>
       <version>v1-0.0.5</version>
       <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.google.truth</groupId>
-      <artifactId>truth</artifactId>
-      <version>0.41</version>
-      <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <artifactId>guava</artifactId>
-          <groupId>com.google.guava</groupId>
-        </exclusion>
-      </exclusions>
     </dependency>
   </dependencies>
 </project>
