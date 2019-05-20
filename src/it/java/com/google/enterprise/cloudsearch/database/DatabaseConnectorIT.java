@@ -199,8 +199,8 @@ public class DatabaseConnectorIT {
     config.setProperty("itemMetadata.title.field", "id");
     config.setProperty("itemMetadata.contentLanguage.defaultValue", "en-US");
     config.setProperty("contentTemplate.db.title", "id");
-    config.setProperty("defaultAcl.mode", DefaultAclMode.FALLBACK.toString());
-    config.setProperty("defaultAcl.public", "true");
+    config.setProperty(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    config.setProperty(DefaultAcl.DEFAULT_ACL_PUBLIC, "true");
     config.setProperty("traverse.queueTag", "mockDatabaseConnectorQueue-" + Util.getRandomId());
     return config;
   }
@@ -798,7 +798,8 @@ public class DatabaseConnectorIT {
   }
 
   @Test
-  public void defaultAcl_verifyServing() throws IOException, InterruptedException, SQLException {
+  public void defaultAclMode_fallback_verifyServing()
+      throws IOException, InterruptedException, SQLException {
     String randomId = Util.getRandomId();
     String tableName = name.getMethodName() + randomId;
     String row1 = "row1" + randomId;
@@ -811,9 +812,10 @@ public class DatabaseConnectorIT {
     config.setProperty("itemMetadata.objectType.defaultValue", "myMockDataObject");
     config.setProperty("url.columns", "id");
     config.setProperty("url.format", "http://example.com/employee/{0}");
-    config.setProperty(
-        "defaultAcl.readers.users", "google:connectors1@connectstaging.10bot20.info");
-    config.setProperty("defaultAcl.public", "false");
+    config.setProperty(DefaultAcl.DEFAULT_ACL_READERS_USERS, "google:" + testUser1);
+    config.setProperty(DefaultAcl.DEFAULT_ACL_PUBLIC, "false");
+    config.setProperty(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    config.setProperty(DefaultAcl.DEFAULT_ACL_NAME, "mockdb_fallbackAcl_" + Util.getRandomId());
 
     List<String> query = ImmutableList.of(
         "create table " + tableName + "(id varchar(50) unique not null,"
