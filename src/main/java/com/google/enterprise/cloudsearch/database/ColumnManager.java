@@ -147,6 +147,10 @@ class ColumnManager {
     if (pagination.equals(Pagination.OFFSET)) {
       checkConfiguration(allRecordsSql.contains("?"),
           "Using pagination by offset requires a place holder in the query ('?').");
+    } else if (pagination.equals(Pagination.NONE)) {
+      checkConfiguration(
+          !allRecordsSql.contains("?"),
+          "When pagination is disabled, query should not have a place holder ('?').");
     }
 
     // TODO(normang): For now, inc updates requires a timestamp/datetime column.
