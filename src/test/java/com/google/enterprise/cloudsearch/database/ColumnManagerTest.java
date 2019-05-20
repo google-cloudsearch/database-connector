@@ -458,6 +458,19 @@ public class ColumnManagerTest {
   }
 
   @Test
+  public void testAllRecordsSql_configurationError_paginationNone_withPlaceHolder() {
+    Properties config = buildDefaultConfig();
+    config.put(ColumnManager.DB_PAGINATION, "none");
+    config.put(
+        ColumnManager.DB_ALL_RECORDS_SQL,
+        config.get(ColumnManager.DB_ALL_RECORDS_SQL) + " LIMIT 10 OFFSET ?");
+    setupConfig.initConfig(config);
+    thrown.expect(InvalidConfigurationException.class);
+    thrown.expectMessage("query should not have a place holder");
+    ColumnManager.fromConfiguration(repositoryContextMock);
+  }
+
+  @Test
   public void testTimestampWithPlaceHolder() {
     Properties config = buildDefaultConfig(WITH_TIMESTAMP);
     setupConfig.initConfig(config);
