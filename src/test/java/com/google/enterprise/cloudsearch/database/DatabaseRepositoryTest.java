@@ -2961,4 +2961,147 @@ public class DatabaseRepositoryTest {
       factory.shutdown();
     }
   }
+
+  @Test
+  @Parameters({
+    "int, 11", // int, integer, mediumint, int4, signed
+    "bit, false", // boolean, bit, bool
+    "tinyint, 127",
+    "smallint, 32767", // smallint, int2, year
+    "bigint, 9223372036854775807", // bigint, int8
+    "identity, 0",
+    "decimal, 43.21", // decimal, number, dec, numeric
+    "float, 11.23", // double, float, float8
+    "real, 12.34" // real, float(precisionInt), float4
+  })
+  // http://www.h2database.com/html/datatypes.html
+  public void numericTypes_h2_succeeds(String typeName, String value) throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id, numeric_type, type_name");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL,
+        "select id, numeric_type, type_name from testtable");
+    config.put(ColumnManager.DB_CONTENT_COLUMNS, "*");
+    config.put(UrlBuilder.CONFIG_FORMAT, "http://example.com/{0}");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "id");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    // create target for verification
+    String targetContent = "<!DOCTYPE html>\n"
+        + "<html lang='en'>\n"
+        + "<head>\n"
+        + "<meta http-equiv='Content-Type' content='text/html; charset=utf-8'/>\n"
+        + "<title>id1</title>\n"
+        + "</head>\n"
+        + "<body>\n"
+        + "<div id='id'>\n"
+        + "  <p>id:</p>\n"
+        + "  <h1>id1</h1>\n"
+        + "</div>\n"
+        + "<div id='type_name'>\n"
+        + "  <p>type_name:</p>\n"
+        + "  <p><small>" + typeName + "</small></p>\n"
+        + "</div>\n"
+        + "<div id='numeric_type'>\n"
+        + "  <p>numeric_type:</p>\n"
+        + "  <p><small>" + value + "</small></p>\n"
+        + "</div>\n"
+        + "</body>\n"
+        + "</html>\n";
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      String createStmt = "create table testtable ("
+          + "id varchar(32) unique not null, "
+          + "numeric_type " + typeName + ", "
+          + "type_name varchar(32))";
+      String insertStmt =
+          "insert into testtable (id, numeric_type, type_name) values ('id1', ?, ?)";
+      try (PreparedStatement stmt = conn.prepareStatement(createStmt)) {
+        stmt.execute();
+      }
+      try (PreparedStatement stmt = conn.prepareStatement(insertStmt)) {
+        stmt.setString(1, value);
+        stmt.setString(2, typeName);
+        stmt.execute();
+      }
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> records =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        RepositoryDoc record = (RepositoryDoc) records.iterator().next();
+        String html =
+            CharStreams.toString(
+                new InputStreamReader(record.getContent().getInputStream(), Charsets.UTF_8));
+        assertEquals(targetContent, html);
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
+  @Parameters({
+    "binary", "varbinary" // binary, varbinary, binary varying, longvarbinary, raw, bytea
+  })
+  public void binaryTypes_h2_succeeds(String typeName) throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id, binary_type, type_name");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL,
+        "select id, binary_type, type_name from testtable");
+    config.put(ColumnManager.DB_CONTENT_COLUMNS, "*");
+    config.put(UrlBuilder.CONFIG_FORMAT, "http://example.com/{0}");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "id");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      String createStmt = "create table testtable ("
+          + "id varchar(32) unique not null, "
+          + "binary_type " + typeName + ","
+          + "type_name varchar(32))";
+      String insertStmt =
+          "insert into testtable (id, binary_type, type_name) values ('id1', ?, ?)";
+      try (PreparedStatement stmt = conn.prepareStatement(createStmt)) {
+        stmt.execute();
+      }
+      try (PreparedStatement stmt = conn.prepareStatement(insertStmt)) {
+        stmt.setBytes(1, "binary data".getBytes(Charsets.UTF_8));
+        stmt.setString(2, typeName);
+        stmt.execute();
+      }
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> records =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        RepositoryDoc record = (RepositoryDoc) records.iterator().next();
+        String html =
+            CharStreams.toString(
+                new InputStreamReader(record.getContent().getInputStream(), Charsets.UTF_8));
+        assertThat(html, containsString("<small>[B@"));
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
 }
