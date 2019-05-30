@@ -2104,7 +2104,8 @@ public class DatabaseRepositoryTest {
   @Parameters({
     "data-with-dash",
     "data with spaces",
-    "data with \u20acuro"
+    "data with \u20acuro",
+    "data with MixedCaseChars"
   })
   public void getAllDocs_charsInMetadataTitle_succeeds(String dataForTitle) throws Exception {
     Properties config = new Properties();
