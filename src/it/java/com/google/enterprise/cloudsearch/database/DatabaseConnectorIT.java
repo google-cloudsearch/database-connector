@@ -507,9 +507,12 @@ public class DatabaseConnectorIT {
     Properties config = new Properties();
     config.setProperty("db.allRecordsSql", "Select id, textField as text, intField as integer,"
         + " booleanField as boolean, floatField as float, dateField as date,"
+        + " datetimeField as datetime, datetime2Field as datetime2, timeField as time,"
+        + " smalldatetimeField as smalldatetime, datetimeoffsetField as datetimeoffset,"
         + " enumField as enum from " + tableName);
     config.setProperty("db.allColumns", "id, textField, intField, booleanField, floatField,"
-        + " dateField, enumField");
+        + " dateField, datetimeField, datetime2Field, timeField, smalldatetimeField,"
+        + " datetimeoffsetField, enumField");
     config.setProperty("url.columns", "id");
     config.setProperty("url.format", "http://example.com/employee/{0}");
     config.setProperty("itemMetadata.objectType.defaultValue", "myMockDataObject");
@@ -520,15 +523,23 @@ public class DatabaseConnectorIT {
     List<String> mockItems = new ArrayList<>();
     query.add("create table " + tableName + " (id varchar(32) unique not null,"
         + " textField varchar(128), intField int, booleanField bit,"
-        + " floatField float, dateField date, enumField int)");
-    query.add("insert into " + tableName
-        + " (id, textField, intField, booleanField, floatField, dateField,"
-        + " enumField) values ('" + row1 + "', 'Jones May', '2134678', 'true', '2000.00', "
-            + "'2007-11-20', '2')");
-    query.add("insert into " + tableName
-        + " (id, textField, intField, booleanField, floatField, dateField,"
-        + " enumField) values ('" + row2 + "', 'Joe Smith', '-9846', 'false', '12000.00',"
-            + " '1987-02-28', '1')");
+        + " floatField float, dateField date, datetimeField datetime, datetime2Field datetime2,"
+        + " timeField time, smalldatetimeField smalldatetime, datetimeoffsetField datetimeoffset,"
+        + " enumField int)");
+    query.add(
+        "insert into " + tableName + " (id, textField, intField, booleanField, floatField,"
+            + " dateField, datetimeField, datetime2Field, timeField, smalldatetimeField,"
+            + " datetimeoffsetField, enumField)"
+        + "values ('" + row1 + "', 'Jones May', '2134678', 'true', '2000.00', "
+            + "'2007-11-20', '2007-11-20 10:10:20.123', '2007-11-20 10:10:20.1234567',"
+            + " '10:10:20.1234567', '2007-11-20 10:10:20', '2007-11-20 10:10:20 +03:15', '2')");
+    query.add(
+        "insert into " + tableName + " (id, textField, intField, booleanField, floatField,"
+            + " dateField, datetimeField, datetime2Field, timeField, smalldatetimeField,"
+            + " datetimeoffsetField, enumField)"
+        + "values ('" + row2 + "', 'Joe Smith', '-9846', 'false', '12000.00',"
+          + "'1987-02-28', '1987-02-28 11:12:13.123', '1987-02-28 11:12:13.1234567',"
+          + " '11:12:13.1234567', '1987-02-28 11:12:13', '1987-02-28 11:12:13 +05:15', '1')");
     DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
     String[] args = setupDataAndConfiguration(dbConnection, config, query);
     MockItem itemId1 = new MockItem.Builder(getItemId(row1))
@@ -541,6 +552,11 @@ public class DatabaseConnectorIT {
         .addValue("boolean", "true")
         .addValue("float", "2000.00")
         .addValue("date", "2007-11-20")
+        .addValue("datetime", "2007-11-20 10:10:20.123")
+        .addValue("datetime2", "2007-11-20 10:10:20.1234567")
+        .addValue("time", "10:10:20.1234567")
+        .addValue("smalldatetime", "2007-11-20 10:10:20")
+        .addValue("datetimeoffset", "2007-11-20 10:10:20 +03:15")
         .setObjectType("myMockDataObject")
         .addValue("enum", 2)
         .build();
@@ -554,6 +570,11 @@ public class DatabaseConnectorIT {
         .addValue("boolean", "false")
         .addValue("float", "12000.00")
         .addValue("date", "1987-02-28")
+        .addValue("datetime", "1987-02-28 11:12:13.123")
+        .addValue("datetime2", "1987-02-28 11:12:13.1234567")
+        .addValue("time", "10:10:20.1234567")
+        .addValue("smalldatetime", "1987-02-28 11:12:13")
+        .addValue("datetimeoffset", "1987-02-28 11:12:13 +05:15")
         .setObjectType("myMockDataObject")
         .addValue("enum", 1)
         .build();
