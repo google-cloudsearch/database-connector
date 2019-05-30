@@ -961,6 +961,89 @@ public class DatabaseConnectorIT {
   }
 
   @Test
+  public void incrementalTraversal_addAcl_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "Select id, name, dateField,"
+        + " readers_users from " + tableName);
+    config.setProperty("db.allColumns", "id, name, dateField, readers_users");
+    config.setProperty("connector.runOnce", "false");
+    config.setProperty("defaultAcl.mode", DefaultAclMode.FALLBACK.toString());
+    config.setProperty("defaultAcl.public", "false");
+    config.setProperty("defaultAcl.readers.users", "google:" + testUser1);
+    config.setProperty("schedule.incrementalTraversalIntervalSecs", "10");
+    config.setProperty("db.incrementalUpdateSql", "select id, name, dateField,"
+        + " readers_users from " + tableName + " where dateField > ?");
+    String row = "row" + randomId;
+    String createSQL = String.format(
+        "create table %s (id varchar(32) unique not null, "
+            + "name varchar(128),  dateField timestamp, readers_users varchar(128))",
+        tableName);
+    String insertSQL = String.format(
+        "insert into %s (id, name,  dateField) "
+            + "values ('%s', '%s', '%s')",
+        tableName, row, "Jones May", "1907-10-10T14:21:23.400Z");
+
+    try {
+      DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+      List<String> query = ImmutableList.of(createSQL, insertSQL);
+      String[] args = setupDataAndConfiguration(dbConnection, config, query);
+      MockItem item = new MockItem.Builder(getItemId(row))
+          .setTitle(row)
+          .setSourceRepositoryUrl(row)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+      IndexingApplication dbConnector = runConnector(args);
+      Awaitility.await()
+          .atMost(CONNECTOR_RUN_TIME)
+          .pollInterval(CONNECTOR_RUN_POLL_INTERVAL)
+          .until(() -> ConnectorStats.getSuccessfulFullTraversalsCount() > 0);
+      testUtils.waitUntilEqual(getItemId(row), item.getItem());
+      ItemAcl expectedAcl =
+          new ItemAcl()
+              .setReaders(
+                  Arrays.asList(
+                      Acl.getGoogleUserPrincipal(testUser1)));
+      searchUtilUser1.waitUntilItemServed(row, row);
+
+      String updateSQL =
+          String.format(
+              "update %s set dateField = CURRENT_TIMESTAMP(), readers_users = "
+                  + "'google:%s' where id = '%s'",
+              tableName, testUser2, row);
+      executeDatabaseStatement(dbConnection,
+          Collections.singletonList(updateSQL));
+      int traversalCount = ConnectorStats.getSuccessfulIncrementalTraversalsCount();
+      Awaitility.await()
+          .atMost(CONNECTOR_RUN_TIME)
+          .pollInterval(CONNECTOR_RUN_POLL_INTERVAL)
+          .until(() -> ConnectorStats.
+              getSuccessfulIncrementalTraversalsCount() > traversalCount + 1);
+      dbConnector.shutdown("Shutdown Initiated");
+      MockItem updatedItem = new MockItem.Builder(getItemId(row))
+          .setTitle(row)
+          .setSourceRepositoryUrl(row)
+          .setContentLanguage("en-US")
+          .setItemType(ItemType.CONTENT_ITEM.toString())
+          .build();
+      testUtils.waitUntilEqual(getItemId(row), updatedItem.getItem());
+      expectedAcl =
+          new ItemAcl()
+              .setReaders(
+                  Arrays.asList(
+                      Acl.getGoogleUserPrincipal(testUser2)));
+      assertEquals(expectedAcl, v1Client.getItem(getItemId(row)).getAcl());
+      searchUtilUser1.waitUntilItemNotServed(row, row);
+      searchUtilUser2.waitUntilItemServed(row, row);
+    } finally {
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(row)));
+    }
+  }
+
+  @Test
   public void incrementalTraversal_updateAcl_succeeds()
       throws IOException, InterruptedException, SQLException {
     String randomId = Util.getRandomId();
