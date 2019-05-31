@@ -64,6 +64,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.awaitility.Awaitility;
 import org.awaitility.Duration;
 import org.junit.BeforeClass;
@@ -77,7 +79,7 @@ import org.junit.runners.JUnit4;
 /**
  * Tests to check the integration between the database connector and CloudSearch Indexing API.
  */
-@RunWith(JUnit4.class)
+@RunWith(JUnitParamsRunner.class)
 public class DatabaseConnectorIT {
   private static final Logger logger = Logger.getLogger(DatabaseConnectorIT.class.getName());
   private static final String DATA_SOURCE_ID_PROPERTY_NAME = qualifyTestProperty("sourceId");
@@ -908,6 +910,61 @@ public class DatabaseConnectorIT {
     } finally {
       executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
       v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId)));
+    }
+  }
+
+  @Test
+  @Parameters({
+    "char(9), test data",
+    "varchar(32), testing data",
+    "text, test data",
+    "nchar(11), test%20data",
+    "nvarchar(128), test%20data",
+    "ntext, test%20data"
+  })
+  public void stringDataTypes_inSQLServer_succeeds(String type, String data)
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = "stringDataTypes_inSQLServer_succeeds" + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "Select id, text from " + tableName);
+    config.setProperty("db.allColumns", "id, text");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.objectType.defaultValue", "myMockDataObject");
+
+    String row = "row" + randomId;
+    List<String> query = new ArrayList<>();
+    List<String> mockItems = new ArrayList<>();
+
+    String createSQL = String.format(
+        "create table %s (id varchar(32) unique not null, text %s)",
+        tableName, type);
+    String insertSQL = String.format(
+        "insert into %s (id, text) values ('%s', '%s')",
+        tableName, row, data);
+    query.add(createSQL);
+    query.add(insertSQL);
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    MockItem itemId1 = new MockItem.Builder(getItemId(row))
+        .setTitle(row)
+        .setSourceRepositoryUrl("http://example.com/employee/" + row)
+        .setContentLanguage("en-US")
+        .setItemType(ItemType.CONTENT_ITEM.toString())
+        .addValue("text", data)
+        .setObjectType("myMockDataObject")
+        .build();
+    mockItems.addAll(asList(getItemId(row)));
+
+    try {
+      runAwaitConnector(args);
+      testUtils.waitUntilEqual(getItemId(row), itemId1.getItem());
+      verifyStructuredData(getItemId(row), "myMockDataObject", itemId1.getItem());
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(mockItems);
     }
   }
 
