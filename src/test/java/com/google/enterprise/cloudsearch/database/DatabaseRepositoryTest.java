@@ -2137,9 +2137,50 @@ public class DatabaseRepositoryTest {
         for (ApiOperation op : allDocs) {
           RepositoryDoc record = (RepositoryDoc) op;
           Item item = record.getItem();
-
-          System.out.println("item: " + item);
           assertEquals(dataForTitle, item.getMetadata().getTitle());
+        }
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
+  public void getAllDocs_nullValueInUrlColumn_throwsIllegalArgumentException() throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id, data");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL, "select id, data from testtable");
+    config.put(IndexingItemBuilder.TITLE_FIELD, "data");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "data");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("create table testtable (id varchar(32) unique not null, data varchar(128))");
+        stmt.execute("insert into testtable (id, data) values ('id1', 'text')");
+        stmt.execute("insert into testtable (id) values ('id2')");
+        stmt.execute("insert into testtable (id, data) values ('id3', 'text')");
+      }
+
+      // The exception is thrown when the iterator calls next and the repository class
+      // tries to build the url for the row with a null value.
+      try (CheckpointCloseableIterable<ApiOperation> allDocs =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        thrown.expect(IllegalArgumentException.class);
+        for (ApiOperation op : allDocs) {
         }
       }
     } finally {
