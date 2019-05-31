@@ -2147,6 +2147,62 @@ public class DatabaseRepositoryTest {
     }
   }
 
+  private Object uniqueKeyColumnParams() {
+    return new Object[]{
+      new Object[] { "id", "id1"},
+      new Object[] { "id,textdata", "id1/textcontent"},
+      new Object[] { "id,numericdata", "id1/11"},
+      new Object[] { "textdata,numericdata", "textcontent/11"},
+      new Object[] { "numericdata, id, textdata", "11/id1/textcontent"}
+    };
+  }
+
+  @Test
+  @Parameters(method = "uniqueKeyColumnParams")
+  public void getAllDocs_uniqueKeyColumn_succeeds(String keyColumns, String key) throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, keyColumns);
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id, textdata, numericdata");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL, "select id, textdata, numericdata from testtable");
+    config.put(IndexingItemBuilder.TITLE_FIELD, "textdata");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "id");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      // build the db
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("create table testtable ("
+            + "id varchar(32) unique not null, "
+            + "textdata varchar(128), "
+            + "numericdata int)");
+        stmt.execute(
+            "insert into testtable (id, textdata, numericdata) values ('id1', 'textcontent', 11)");
+      }
+      // query the db
+      try (CheckpointCloseableIterable<ApiOperation> allDocs =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        for (ApiOperation op : allDocs) {
+          RepositoryDoc record = (RepositoryDoc) op;
+          Item item = record.getItem();
+          assertEquals(key, item.getName());
+        }
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
   @Test
   public void getAllDocs_nullValueInUrlColumn_throwsIllegalArgumentException() throws Exception {
     Properties config = new Properties();
