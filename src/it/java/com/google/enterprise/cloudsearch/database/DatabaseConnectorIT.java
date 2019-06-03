@@ -590,6 +590,328 @@ public class DatabaseConnectorIT {
   }
 
   @Test
+  // "timestamp" type is not a JDBC timestamp, it's a binary type that maps to a
+  // byte[]. You can't set it in an insert statement; the system handles that.
+  public void sqlServer_timestamp_readAsArray_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "select id, testcol from " + tableName);
+    config.setProperty("db.allColumns", "id, testcol");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.title.field", "testcol");
+
+    String rowId = "row1" + randomId;
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName
+        + " (id varchar(32) unique not null, testcol timestamp)");
+    query.add("insert into " + tableName + " (id) values ('" + rowId + "')");
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    try {
+      runAwaitConnector(args);
+      Item item = v1Client.getItem(getItemId(rowId));
+      assertEquals("Expected array for title",
+          true, item.getMetadata().getTitle().startsWith("[B@"));
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId)));
+    }
+  }
+
+  @Test
+  public void sqlServer_hierarchyid_readAsArray_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "select id, testcol from " + tableName);
+    config.setProperty("db.allColumns", "id, testcol");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.title.field", "testcol");
+
+    String rowId = "row1" + randomId;
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName
+        + " (id varchar(32) unique not null, testcol hierarchyid primary key clustered)");
+    query.add("insert into " + tableName + " (id, testcol) values ('" + rowId + "', '/')");
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    try {
+      runAwaitConnector(args);
+      Item item = v1Client.getItem(getItemId(rowId));
+      assertEquals("Expected array for title",
+          true, item.getMetadata().getTitle().startsWith("[B@"));
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId)));
+    }
+  }
+
+  @Test
+  public void sqlServer_hierarchyid_readAsString_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql",
+        "select id, testcol.ToString() as testcol from " + tableName);
+    config.setProperty("db.allColumns", "id, testcol");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.title.field", "testcol");
+
+    String rowId = "row1" + randomId;
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName
+        + " (id varchar(32) unique not null, testcol hierarchyid primary key clustered)");
+    query.add("insert into " + tableName + " (id, testcol) values ('" + rowId + "', '/')");
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    try {
+      runAwaitConnector(args);
+      Item item = v1Client.getItem(getItemId(rowId));
+      assertEquals("/", item.getMetadata().getTitle());
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId)));
+    }
+  }
+
+  @Test
+  public void sqlServer_uniqueidentifier_readAsString_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "select id, testcol from " + tableName);
+    config.setProperty("db.allColumns", "id, testcol");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.title.field", "testcol");
+
+    String rowId = "row1" + randomId;
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName
+        + " (id varchar(32) unique not null, testcol uniqueidentifier not null default newid())");
+    query.add("insert into " + tableName + " (id, testcol) values ('" + rowId + "', newid())");
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    try {
+      runAwaitConnector(args);
+      Item item = v1Client.getItem(getItemId(rowId));
+      assertEquals(true, item.getMetadata().getTitle().matches(
+              "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"));
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId)));
+    }
+  }
+
+  @Test
+  public void sqlServer_sql_variant_readAsString_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql",
+        "select id, cast(testcol as varchar) as testcol from " + tableName);
+    config.setProperty("db.allColumns", "id, testcol");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.title.field", "testcol");
+
+    String rowId1 = "row1" + randomId;
+    String rowId2 = "row2" + randomId;
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName
+        + " (id varchar(32) unique not null, testcol sql_variant)");
+    query.add("insert into " + tableName + " (id, testcol) "
+        + "values ('" + rowId1 + "', cast(11 as int))");
+    query.add("insert into " + tableName + " (id, testcol) "
+        + "values ('" + rowId2 + "', cast('variant data' as varchar(32)))");
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    try {
+      runAwaitConnector(args);
+      Item item1 = v1Client.getItem(getItemId(rowId1));
+      assertEquals("11", item1.getMetadata().getTitle());
+      Item item2 = v1Client.getItem(getItemId(rowId2));
+      assertEquals("variant data", item2.getMetadata().getTitle());
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId1), getItemId(rowId2)));
+    }
+  }
+
+  @Test
+  public void sqlServer_xml_readAsString_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "select id, testcol from " + tableName);
+    config.setProperty("db.allColumns", "id, testcol");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.title.field", "testcol");
+
+    String rowId = "row1" + randomId;
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName
+        + " (id varchar(32) unique not null, testcol xml)");
+    query.add("insert into " + tableName + " (id, testcol) values ('"
+        + rowId + "', cast('<foo>data</foo>' as xml))");
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    try {
+      runAwaitConnector(args);
+      Item item = v1Client.getItem(getItemId(rowId));
+      assertEquals("<foo>data</foo>", item.getMetadata().getTitle());
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId)));
+    }
+  }
+
+  @Test
+  public void sqlServer_geometry_readAsArray_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "select id, testcol from " + tableName);
+    config.setProperty("db.allColumns", "id, testcol");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.title.field", "testcol");
+
+    String rowId = "row1" + randomId;
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName
+        + " (id varchar(32) unique not null, testcol geometry)");
+    query.add("insert into " + tableName + " (id, testcol) values ('"
+        + rowId + "', geometry::STGeomFromText('LINESTRING (100 100, 20 180, 180 180)', 0))");
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    try {
+      runAwaitConnector(args);
+      Item item = v1Client.getItem(getItemId(rowId));
+      assertEquals("Expected array for title",
+          true, item.getMetadata().getTitle().startsWith("[B@"));
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId)));
+    }
+  }
+
+  @Test
+  public void sqlServer_geometry_readAsString_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql",
+        "select id, testcol.STAsText() as testcol from " + tableName);
+    config.setProperty("db.allColumns", "id, testcol");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.title.field", "testcol");
+
+    String rowId = "row1" + randomId;
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName
+        + " (id varchar(32) unique not null, testcol geometry)");
+    query.add("insert into " + tableName + " (id, testcol) values ('"
+        + rowId + "', geometry::STGeomFromText('LINESTRING (100 100, 20 180, 180 180)', 0))");
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    try {
+      runAwaitConnector(args);
+      Item item = v1Client.getItem(getItemId(rowId));
+      assertEquals("LINESTRING (100 100, 20 180, 180 180)", item.getMetadata().getTitle());
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId)));
+    }
+  }
+
+  @Test
+  public void sqlServer_geography_readAsArray_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "select id, testcol from " + tableName);
+    config.setProperty("db.allColumns", "id, testcol");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.title.field", "testcol");
+
+    String rowId = "row1" + randomId;
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName
+        + " (id varchar(32) unique not null, testcol geography)");
+    query.add("insert into " + tableName + " (id, testcol) values ('" + rowId
+        + "', geography::STGeomFromText('LINESTRING(-122.360 47.656, -122.343 47.656 )', 4326))");
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    try {
+      runAwaitConnector(args);
+      Item item = v1Client.getItem(getItemId(rowId));
+      assertEquals("Expected array for title",
+          true, item.getMetadata().getTitle().startsWith("[B@"));
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId)));
+    }
+  }
+
+  @Test
+  public void sqlServer_geography_readAsString_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql",
+        "select id, testcol.STAsText() as testcol from " + tableName);
+    config.setProperty("db.allColumns", "id, testcol");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.title.field", "testcol");
+
+    String rowId = "row1" + randomId;
+    List<String> query = new ArrayList<>();
+    query.add("create table " + tableName
+        + " (id varchar(32) unique not null, testcol geography)");
+    query.add("insert into " + tableName + " (id, testcol) values ('" + rowId
+        + "', geography::STGeomFromText('LINESTRING(-122.360 47.656, -122.343 47.656)', 4326))");
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.SQLSERVER);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    try {
+      runAwaitConnector(args);
+      Item item = v1Client.getItem(getItemId(rowId));
+      assertEquals("LINESTRING (-122.36 47.656, -122.343 47.656)", item.getMetadata().getTitle());
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId)));
+    }
+  }
+
+  @Test
   public void testFullTraversalWithUpdates()
       throws IOException, SQLException, InterruptedException {
     String randomId = Util.getRandomId();
