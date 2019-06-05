@@ -5,7 +5,6 @@ JDBC 4.0 (or later compliant driver) with support for ACLs and change & delete d
 
 ## Build instructions
 
-
 1. Build the connector
 
    a. Clone the connector repository from GitHub:
@@ -38,7 +37,7 @@ JDBC 4.0 (or later compliant driver) with support for ACLs and change & delete d
    [configuration documentation](https://developers.google.com/cloud-search/docs/guides/database-connector#configureDB)
    for specifics and parameter details.
 
-4. Install the connector
+3. Install the connector
 
    To install the connector for testing or production, copy the ZIP file from the
    target directory to the desired machine and unzip it in the desired directory.
