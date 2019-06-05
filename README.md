@@ -15,7 +15,7 @@ JDBC 4.0 (or later compliant driver) with support for ACLs and change & delete d
 
    b. Checkout the desired version of the connector and build the ZIP file:
       ```
-      git checkout tags/v1-0.0.4
+      git checkout tags/v1-0.0.5
       mvn package
       ```
       (To skip the tests when building the connector, use `mvn package -DskipTests`)
@@ -23,7 +23,7 @@ JDBC 4.0 (or later compliant driver) with support for ACLs and change & delete d
 2. Run the connector
    ```
    java \
-      -cp "target/google-cloudsearch-database-connector-v1-0.0.4.jar:mysql-connector-java-5.1.41-bin.jar" \
+      -cp "target/google-cloudsearch-database-connector-v1-0.0.5.jar:mysql-connector-java-5.1.41-bin.jar" \
       com.google.enterprise.cloudsearch.database.DatabaseFullTraversalConnector \
       -Dconfig=mysql.config
    ```
