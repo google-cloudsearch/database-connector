@@ -20,6 +20,7 @@ import static com.google.enterprise.cloudsearch.sdk.TestProperties.SERVICE_KEY_P
 import static com.google.enterprise.cloudsearch.sdk.TestProperties.qualifyTestProperty;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Arrays.asList;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -52,8 +53,10 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.GeneralSecurityException;
+import java.sql.Blob;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -499,6 +502,49 @@ public class DatabaseConnectorIT {
       verifyStructuredData(getItemId(row2), "myMockDataObject", itemId2.getItem());
     } finally {
       v1Client.deleteItemsIfExist(mockItems);
+    }
+  }
+
+  @Test
+  public void blobDataType_succeeds()
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = name.getMethodName() + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "select id, testcol from " + tableName);
+    config.setProperty("db.allColumns", "id, testcol");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("db.blobColumn", "testcol");
+    config.setProperty("db.contentColumns", "*");
+    String rowId = "row1" + randomId;
+
+    String targetContent = "This is some blob content." + '\0' + '\t';
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.H2);
+    try (Connection connection = DriverManager.getConnection(
+        dbConnection.dbUrl, dbConnection.user, dbConnection.password)) {
+      PreparedStatement stmt = connection.prepareStatement(
+          "create table " + tableName + "(id varchar(32) unique not null, testcol blob)");
+      stmt.execute();
+      stmt.close();
+      stmt = connection.prepareStatement(
+          "insert into " + tableName + " (id, testcol) values ('" + rowId + "', ?)");
+      Blob targetBlob = connection.createBlob();
+      targetBlob.setBytes(1, targetContent.getBytes(UTF_8));
+      stmt.setBlob(1, targetBlob);
+      stmt.execute();
+      stmt.close();
+      targetBlob.free();
+    }
+
+    String[] args = setupDataAndConfiguration(dbConnection, config, new ArrayList<>());
+    try {
+      runAwaitConnector(args);
+      Item item = v1Client.getItem(getItemId(rowId));
+      assertEquals(targetContent, new String(item.getContent().decodeInlineContent()));
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
+      v1Client.deleteItemsIfExist(ImmutableList.of(getItemId(rowId)));
     }
   }
 
