@@ -2204,6 +2204,63 @@ public class DatabaseRepositoryTest {
   }
 
   @Test
+  @Parameters({
+    "int, 123",
+    "double, 12.3", // float, double data type
+    "bigint, 9223372036854775802", // long data type
+    "boolean, false",
+    "char(3), abc",
+    "varchar(16), stringid", // string data type
+    "date, 2015-12-15",
+    "time, 23:59:59",
+    "timestamp, 2015-12-15 23:15:15.0"
+  })
+  // http://www.h2database.com/html/datatypes.html
+  public void uniqueKeyColumn_DataTypes_succeed(String columnType, String value)
+      throws Exception {
+    Properties config = new Properties();
+    config.put(DatabaseConnectionFactory.DB_URL, getUrl());
+    config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id");
+    config.put(ColumnManager.DB_ALL_COLUMNS, "id, data");
+    config.put(ColumnManager.DB_ALL_RECORDS_SQL, "select id, data from testtable");
+    config.put(IndexingItemBuilder.TITLE_FIELD, "data");
+    config.put(UrlBuilder.CONFIG_COLUMNS, "id");
+    config.put(CONFIG_TITLE_DB_FORMAT, "id");
+    config.put(DefaultAcl.DEFAULT_ACL_MODE, DefaultAclMode.FALLBACK.toString());
+    setupConfig.initConfig(config);
+    InMemoryDBConnectionFactory factory = new InMemoryDBConnectionFactory();
+    when(helperMock.getConnectionFactory()).thenReturn(factory);
+    mockContent();
+    DatabaseRepository dbRepository = new DatabaseRepository(helperMock);
+    dbRepository.init(repositoryContextMock);
+
+    Connection conn = factory.createConnection();
+    try {
+      try (Statement stmt = conn.createStatement()) {
+        String createSQL = String.format("create table testtable (id %s unique not null, "
+            + "data varchar(128))", columnType);
+        String insertSQL = String.format("insert into testtable (id, data) "
+            + "values('%s', 'testdata')", value);
+        stmt.execute(createSQL);
+        stmt.execute(insertSQL);
+      }
+
+      try (CheckpointCloseableIterable<ApiOperation> allDocs =
+          dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
+        for (ApiOperation op : allDocs) {
+          RepositoryDoc record = (RepositoryDoc) op;
+          Item item = record.getItem();
+          assertEquals(value, item.getName());
+        }
+      }
+    } finally {
+      factory.releaseConnection(conn);
+      dbRepository.close();
+      factory.shutdown();
+    }
+  }
+
+  @Test
   public void getAllDocs_nullValueInUrlColumn_throwsIllegalArgumentException() throws Exception {
     Properties config = new Properties();
     config.put(DatabaseConnectionFactory.DB_URL, getUrl());
