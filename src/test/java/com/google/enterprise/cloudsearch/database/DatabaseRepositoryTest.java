@@ -2261,7 +2261,7 @@ public class DatabaseRepositoryTest {
   }
 
   @Test
-  public void getAllDocs_nullValueInUrlColumn_throwsIllegalArgumentException() throws Exception {
+  public void getAllDocs_nullValueInUrlColumn_noUrlSet() throws Exception {
     Properties config = new Properties();
     config.put(DatabaseConnectionFactory.DB_URL, getUrl());
     config.put(ColumnManager.DB_UNIQUE_KEY_COLUMNS, "id");
@@ -2287,13 +2287,15 @@ public class DatabaseRepositoryTest {
         stmt.execute("insert into testtable (id) values ('id2')");
         stmt.execute("insert into testtable (id, data) values ('id3', 'text')");
       }
-
-      // The exception is thrown when the iterator calls next and the repository class
-      // tries to build the url for the row with a null value.
       try (CheckpointCloseableIterable<ApiOperation> allDocs =
           dbRepository.getAllDocs(NULL_TRAVERSAL_CHECKPOINT)) {
-        thrown.expect(IllegalArgumentException.class);
         for (ApiOperation op : allDocs) {
+          Item item = ((RepositoryDoc) op).getItem();
+          if (item.getName().equals("id2")) {
+            assertNull(item.getMetadata().getSourceRepositoryUrl());
+          } else {
+            assertEquals("text", item.getMetadata().getSourceRepositoryUrl());
+          }
         }
       }
     } finally {
