@@ -122,7 +122,7 @@ public class DatabaseConnectorIT {
   }
 
   private static enum Database {
-    H2, SQLSERVER
+    H2, SQLSERVER, MYSQL
   };
 
   @Rule public ResetConfigRule resetConfig = new ResetConfigRule();
@@ -157,6 +157,14 @@ public class DatabaseConnectorIT {
       List<String> params =
           Splitter.on(",").trimResults().omitEmptyStrings().splitToList(dbSqlParameters);
       assumeThat("Invalid connection params for SQL Server. " + getUsageString(),
+          params.size(), equalTo(3));
+      return new DatabaseConnectionParams(params.get(0), params.get(1), params.get(2));
+    } else if (databaseType == Database.MYSQL) {
+      assumeThat("Invalid connection params for MYSQL Server. " + getUsageString(),
+          dbSqlParameters, notNullValue());
+      List<String> params =
+          Splitter.on(",").trimResults().omitEmptyStrings().splitToList(dbSqlParameters);
+      assumeThat("Invalid connection params for MYSQL Server. " + getUsageString(),
           params.size(), equalTo(3));
       return new DatabaseConnectionParams(params.get(0), params.get(1), params.get(2));
     } else {
@@ -1694,6 +1702,61 @@ public class DatabaseConnectorIT {
       testUtils.waitUntilEqual(getItemId(row2), itemId2.getItem());
       testUtils.waitUntilEqual(getItemId(row3), itemId3.getItem());
     } finally {
+      v1Client.deleteItemsIfExist(mockItems);
+    }
+  }
+
+  @Test
+  @Parameters({
+    "tinyint, 111",
+    "smallint, 32555",
+    "integer, 53219",
+    "char(9), test data",
+    "varchar(32), testing data",
+    "text, test data"
+  })
+  public void basicDataTypes_inMYSQL_succeeds(String type, String data)
+      throws IOException, InterruptedException, SQLException {
+    String randomId = Util.getRandomId();
+    String tableName = "basicDataTypes_inMYSQL_succeeds" + randomId;
+    Properties config = new Properties();
+    config.setProperty("db.allRecordsSql", "Select id, text from " + tableName);
+    config.setProperty("db.allColumns", "id, text");
+    config.setProperty("url.columns", "id");
+    config.setProperty("url.format", "http://example.com/employee/{0}");
+    config.setProperty("itemMetadata.objectType.defaultValue", "myMockDataObject");
+
+    String row = "row" + randomId;
+    List<String> query = new ArrayList<>();
+    List<String> mockItems = new ArrayList<>();
+
+    String createSQL = String.format(
+        "create table %s (id varchar(32) unique not null, text %s)",
+        tableName, type);
+    String insertSQL = String.format(
+        "insert into %s (id, text) values ('%s', '%s')",
+        tableName, row, data);
+    query.add(createSQL);
+    query.add(insertSQL);
+
+    DatabaseConnectionParams dbConnection = getDatabaseConnectionParams(Database.MYSQL);
+    String[] args = setupDataAndConfiguration(dbConnection, config, query);
+    MockItem itemId1 = new MockItem.Builder(getItemId(row))
+        .setTitle(row)
+        .setSourceRepositoryUrl("http://example.com/employee/" + row)
+        .setContentLanguage("en-US")
+        .setItemType(ItemType.CONTENT_ITEM.toString())
+        .addValue("text", data)
+        .setObjectType("myMockDataObject")
+        .build();
+    mockItems.addAll(asList(getItemId(row)));
+
+    try {
+      runAwaitConnector(args);
+      testUtils.waitUntilEqual(getItemId(row), itemId1.getItem());
+      verifyStructuredData(getItemId(row), "myMockDataObject", itemId1.getItem());
+    } finally {
+      executeDatabaseStatement(dbConnection, ImmutableList.of("drop table " + tableName));
       v1Client.deleteItemsIfExist(mockItems);
     }
   }
