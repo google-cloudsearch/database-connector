@@ -18,6 +18,7 @@ package com.google.enterprise.cloudsearch.database;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.not;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -25,7 +26,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -36,16 +36,13 @@ import com.google.api.services.cloudsearch.v1.model.Item;
 import com.google.api.services.cloudsearch.v1.model.ItemMetadata;
 import com.google.api.services.cloudsearch.v1.model.ItemStructuredData;
 import com.google.api.services.cloudsearch.v1.model.ObjectDefinition;
-import com.google.api.services.cloudsearch.v1.model.Operation;
 import com.google.api.services.cloudsearch.v1.model.Schema;
 import com.google.api.services.cloudsearch.v1.model.StructuredDataObject;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.io.CharStreams;
-import com.google.common.util.concurrent.SettableFuture;
 import com.google.enterprise.cloudsearch.sdk.CheckpointCloseableIterable;
 import com.google.enterprise.cloudsearch.sdk.CheckpointCloseableIterableImpl;
-import com.google.enterprise.cloudsearch.sdk.CheckpointCloseableIterableImpl.CompareCheckpointCloseableIterableRule;
 import com.google.enterprise.cloudsearch.sdk.InvalidConfigurationException;
 import com.google.enterprise.cloudsearch.sdk.RepositoryException;
 import com.google.enterprise.cloudsearch.sdk.config.Configuration.ResetConfigRule;
@@ -124,8 +121,6 @@ public class DatabaseRepositoryTest {
   @Rule public ResetConfigRule resetConfig = new ResetConfigRule();
   @Rule public SetupConfigRule setupConfig = SetupConfigRule.uninitialized();
   @Rule public ResetStructuredDataRule resetStructuredData = new ResetStructuredDataRule();
-  @Rule public CompareCheckpointCloseableIterableRule<ApiOperation> changeComparer =
-      CompareCheckpointCloseableIterableRule.getCompareRule();
 
   @Mock private DatabaseRepository.Helper helperMock;
   @Mock private DatabaseAccess databaseAccessMock;
@@ -350,7 +345,7 @@ public class DatabaseRepositoryTest {
           RepositoryDoc record = (RepositoryDoc) op;
           Item item = record.getItem();
           assertEquals(ContentFormat.HTML, record.getContentFormat());
-          assertEquals(RequestMode.SYNCHRONOUS, record.getRequestMode());
+          assertEquals(RequestMode.UNSPECIFIED, record.getRequestMode());
           assertNull(item.getAcl()); // default: Acl won't be set
           String recordId = item.getName();
           assertNotNull(recordId);
@@ -838,9 +833,6 @@ public class DatabaseRepositoryTest {
 
     // Create the default ACL (normally FullTraversalConnector does this).
     IndexingService indexingServiceMock = mock(IndexingService.class);
-    SettableFuture<Operation> createDefaultAclContainer = SettableFuture.create();
-    createDefaultAclContainer.set(new Operation().setDone(true));
-    when(indexingServiceMock.indexItem(any(), any())).thenReturn(createDefaultAclContainer);
     DefaultAcl defaultAcl = DefaultAcl.fromConfiguration(indexingServiceMock);
     assertEquals(DefaultAclMode.FALLBACK, defaultAcl.getDefaultAclMode());
 
@@ -866,8 +858,7 @@ public class DatabaseRepositoryTest {
     targetItem1.setMetadata(new ItemMetadata().setSourceRepositoryUrl(
         "https://acme.com/name=Joe%20Smith/id=id1#Joe%20Smith"));
     new Acl.Builder()
-        .setInheritFrom(DefaultAcl.DEFAULT_ACL_NAME_DEFAULT)
-        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDE)
+        .setReaders(ImmutableList.of(Acl.getCustomerPrincipal()))
         .build()
         .applyTo(targetItem2);
     targetItem2.setMetadata(new ItemMetadata().setSourceRepositoryUrl(
@@ -1741,7 +1732,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -1777,7 +1768,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -1818,7 +1809,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -1862,7 +1853,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -1883,9 +1874,12 @@ public class DatabaseRepositoryTest {
     ZoneId defaultZone = TimeZone.getDefault().toZoneId();
     // use first test timezone
     TimeZone.setDefault(TimeZone.getTimeZone(ZoneId.of(TIMEZONE_TEST_LOCALE)));
-    changesWithTimezone(getUrl());
-    // restore default
-    TimeZone.setDefault(TimeZone.getTimeZone(defaultZone));
+    try {
+      changesWithTimezone(getUrl());
+    } finally {
+      // restore default
+      TimeZone.setDefault(TimeZone.getTimeZone(defaultZone));
+    }
   }
 
   @Test
@@ -1894,9 +1888,12 @@ public class DatabaseRepositoryTest {
     ZoneId defaultZone = TimeZone.getDefault().toZoneId();
     // use a different test timezone
     TimeZone.setDefault(TimeZone.getTimeZone(ZoneId.of(TIMEZONE_TEST_LOCALE_2)));
-    changesWithTimezone(getUrl());
-    // restore default
-    TimeZone.setDefault(TimeZone.getTimeZone(defaultZone));
+    try {
+      changesWithTimezone(getUrl());
+    } finally {
+      // restore default
+      TimeZone.setDefault(TimeZone.getTimeZone(defaultZone));
+    }
   }
 
   private void changesWithTimezone(String url) throws Exception {
@@ -1939,7 +1936,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -1977,7 +1974,7 @@ public class DatabaseRepositoryTest {
         assertNotNull(incrementalChanges);
 
         // verify items
-        assertTrue(changeComparer.compare(targetIncrementalChanges, incrementalChanges));
+        assertIterableEquals(targetIncrementalChanges, incrementalChanges);
         checkpoint2 = incrementalChanges.getCheckpoint();
       }
 
@@ -1985,11 +1982,10 @@ public class DatabaseRepositoryTest {
       try (CheckpointCloseableIterable<ApiOperation> incrementalChanges =
           dbRepository.getChanges(checkpoint2)) {
         assertNotNull(incrementalChanges);
-        assertTrue(
-            changeComparer.compare(
+        assertIterableEquals(
                 new CheckpointCloseableIterableImpl.Builder<ApiOperation>(Collections.emptyList())
                 .setCheckpoint(checkpoint2).build(),
-                incrementalChanges));
+                incrementalChanges);
       }
     } finally {
       factory.releaseConnection(conn);
@@ -2262,5 +2258,22 @@ public class DatabaseRepositoryTest {
   private void assertCheckpointEquals(Checkpoint expected, byte[] actual)
       throws RepositoryException {
     assertEquals(expected, Checkpoint.parse(actual, expected.getClass()));
+  }
+
+  // TODO(jlacey): This is an improvement over CompareCheckpointCloseableIterableRule.
+  // Move this to the SDK, either as-is, or as a Hamcrest Matcher or a Truth Subject.
+  // (We intend to migrate to Truth, but see b/123863881.)
+  private <T> void assertIterableEquals(CheckpointCloseableIterable<T> expected,
+      CheckpointCloseableIterable<T> actual) {
+    Iterator actualIterator = actual.iterator();
+    for (T element : expected) {
+      assertTrue("Missing expected elements starting at: " + element, actualIterator.hasNext());
+      assertEquals(element, actualIterator.next());
+    }
+    if (actualIterator.hasNext()) {
+      fail("Unexpected elements starting at: " + actualIterator.next());
+    }
+    assertArrayEquals("getCheckpoint", expected.getCheckpoint(), actual.getCheckpoint());
+    assertEquals("hasMore", expected.hasMore(), actual.hasMore());
   }
 }

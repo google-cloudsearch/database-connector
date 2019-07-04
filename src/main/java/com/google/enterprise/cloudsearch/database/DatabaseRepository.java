@@ -33,6 +33,7 @@ import com.google.enterprise.cloudsearch.sdk.indexing.IndexingItemBuilder.FieldO
 import com.google.enterprise.cloudsearch.sdk.indexing.IndexingItemBuilder.ItemType;
 import com.google.enterprise.cloudsearch.sdk.indexing.IndexingService.ContentFormat;
 import com.google.enterprise.cloudsearch.sdk.indexing.IndexingService.RequestMode;
+import com.google.enterprise.cloudsearch.sdk.indexing.IndexingServiceImpl;
 import com.google.enterprise.cloudsearch.sdk.indexing.template.ApiOperation;
 import com.google.enterprise.cloudsearch.sdk.indexing.template.Repository;
 import com.google.enterprise.cloudsearch.sdk.indexing.template.RepositoryContext;
@@ -57,20 +58,20 @@ import java.util.logging.Logger;
  * class for both the full traversal and (optional) incremental traversal.
  *
  * <ul>
- *   <li>{@value TRAVERSE_UPDATE_MODE} - Specifies which traversal mode to use: SYNCHRONOUS or
- *       ASYNCHRONOUS (default is SYNCHRONOUS).
+ *   <li>{@value IndexingServiceImpl#INDEXING_SERVICE_REQUEST_MODE} - Specifies which traversal
+ *       mode to use: SYNCHRONOUS or ASYNCHRONOUS (the default is SYNCHRONOUS).
  * </ul>
  */
 class DatabaseRepository implements Repository {
 
-  // define all database repository configuration parameters
+  /* @deprecated Use {@link IndexingServiceImpl#INDEXING_SERVICE_REQUEST_MODE} */
   public static final String TRAVERSE_UPDATE_MODE = "traverse.updateMode";
 
   private static final Logger logger = Logger.getLogger(DatabaseRepository.class.getName());
 
   private ConnectionFactory connectionFactory;
   private ColumnManager columnManager;
-  private RequestMode requestMode = RequestMode.SYNCHRONOUS;
+  private RequestMode requestMode = RequestMode.UNSPECIFIED;
   private final long startTimestamp;
   private final Helper databaseRepositoryHelper;
 
@@ -95,8 +96,15 @@ class DatabaseRepository implements Repository {
     connectionFactory = databaseRepositoryHelper.getConnectionFactory();
     columnManager = ColumnManager.fromConfiguration(context);
     requestMode =
-        Configuration.getValue(TRAVERSE_UPDATE_MODE, RequestMode.SYNCHRONOUS, RequestMode::valueOf)
+        Configuration.getValue(TRAVERSE_UPDATE_MODE, RequestMode.UNSPECIFIED, RequestMode::valueOf)
             .get();
+    if (!requestMode.equals(RequestMode.UNSPECIFIED)) {
+      logger.log(Level.WARNING, "{0} is deprecated, use {1}={2}.",
+          new Object[] {
+            TRAVERSE_UPDATE_MODE,
+            IndexingServiceImpl.INDEXING_SERVICE_REQUEST_MODE,
+            requestMode.name() });
+    }
   }
 
   @Override
