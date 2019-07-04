@@ -16,6 +16,7 @@ JDBC 4.0 (or later compliant driver) with support for ACLs and change & delete d
    b. Checkout the desired version of the connector and build the ZIP file:
       ```
       git checkout tags/v1-0.0.5
+
       mvn package
       ```
       (To skip the tests when building the connector, use `mvn package -DskipTests`)

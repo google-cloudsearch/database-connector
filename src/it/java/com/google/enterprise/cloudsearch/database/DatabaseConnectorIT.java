@@ -122,6 +122,7 @@ public class DatabaseConnectorIT {
     H2, SQLSERVER
   };
 
+
   @Rule public ResetConfigRule resetConfig = new ResetConfigRule();
   @Rule public TemporaryFolder configFolder = new TemporaryFolder();
   @Rule public TestName name = new TestName();
