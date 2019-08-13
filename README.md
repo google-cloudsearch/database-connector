@@ -3,7 +3,7 @@
 The Google Cloud Search Database Connector enables indexing content from any SQL database with a
 JDBC 4.0 (or later compliant driver) with support for ACLs and change & delete detection.
 
-Before running the database connector, you should review [access control list options](https://developers.google.com/cloud-search/docs/guides/database-connector#aclOptions).
+Before running the database connector, you should review the [access control list options](https://developers.google.com/cloud-search/docs/guides/database-connector#aclOptions).
 
 
 
