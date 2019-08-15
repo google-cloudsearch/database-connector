@@ -1,7 +1,11 @@
 # Google Cloud Search Database Connector
 
-The Google Cloud Search Database Connector enables indexing content from any SQL database with a 
+The Google Cloud Search Database Connector enables indexing content from any SQL database with a
 JDBC 4.0 (or later compliant driver) with support for ACLs and change & delete detection.
+
+Before running the database connector, you should review the [access control list options](https://developers.google.com/cloud-search/docs/guides/database-connector#aclOptions).
+
+
 
 ## Build instructions
 
@@ -20,10 +24,38 @@ JDBC 4.0 (or later compliant driver) with support for ACLs and change & delete d
       ```
       (To skip the tests when building the connector, use `mvn package -DskipTests`)
 
-2. Run the connector
+
+2. Install the connector
+
+   The `mvn package` command creates a ZIP file containing the
+   connector and its dependencies with a name like
+   `google-cloudsearch-database-connector-v1-0.0.5.zip`.
+
+   a. Copy this ZIP file to the location where you want to install the connector.
+
+   b. Unzip the connector ZIP file. A directory with a name like
+      `google-cloudsearch-database-connector-v1-0.0.5` will be created.
+
+   c. Change into this directory. You should see the connector jar file,
+      `google-cloudsearch-database-connector-v1-0.0.5.jar`, as well as a `lib`
+      directory containing the connector's dependencies.
+
+
+3. Configure the connector
+
+   a. Create a file containing the connector configuration parameters. Refer to the
+   [configuration documentation](https://developers.google.com/cloud-search/docs/guides/database-connector#configureDB)
+   for specifics and for parameter details.
+
+
+4. Run the connector
+
+   The connector should be run from the unzipped installation directory, **not** the source
+   code's `target` directory.
+
    ```
    java \
-      -cp "target/google-cloudsearch-database-connector-v1-0.0.5.jar:mysql-connector-java-5.1.41-bin.jar" \
+      -cp "google-cloudsearch-database-connector-v1-0.0.5.jar:mysql-connector-java-5.1.41-bin.jar" \
       com.google.enterprise.cloudsearch.database.DatabaseFullTraversalConnector \
       -Dconfig=mysql.config
    ```
@@ -32,47 +64,10 @@ JDBC 4.0 (or later compliant driver) with support for ACLs and change & delete d
    and `mysql.config` is the configuration file containing the parameters for the connector
    execution.
 
-   **Note:** If the configuration file is not specified, a default file name
-   `connector-config.properties` will be assumed. Refer to
-   [configuration documentation](https://developers.google.com/cloud-search/docs/guides/database-connector#configureDB)
-   for specifics and parameter details.
+   **Note:** If the configuration file is not specified, a default file name of
+   `connector-config.properties` will be assumed.
 
-3. Install the connector
-
-   To install the connector for testing or production, copy the ZIP file from the
-   target directory to the desired machine and unzip it in the desired directory.
-
-## Running integration tests
-
-The integration tests check the correct interoperability between the database connector and the
-Cloud Search APIs. They are run using the Failsafe plug-in and follow its naming conventions (i.e.,
-they are suffixed with "IT").
-
-To run them, issue the command
-
-```
-mvn verify \
-    -DskipITs=false \
-    -Dapi.test.serviceAccountPrivateKeyFile=<PATH_TO_SERVICE_ACCOUNT_KEY> \
-    -Dapi.test.sourceId=<DATA_SOURCE_ID>
-```
-
-where
-
-- `api.test.serviceAccountKey` is the path to JSON file containing the credentials of a service
-  account that can access the APIs.
-
-- `api.test.sourceId` is the ID of the data source to which the test will sync
-  the data.
-
-The following is an example of a complete command:
-
-```
-mvn verify \
-    -DskipITs=false \
-    -Dapi.test.serviceAccountPrivateKeyFile=key.json \
-    -Dapi.test.sourceId=01cb7dfca117fbb591360a2b6e46912e
-```
 
 For further information on configuration and deployment of this connector, see
 [Deploy a Database Connector](https://developers.google.com/cloud-search/docs/guides/database-connector).
+
