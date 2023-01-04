@@ -64,6 +64,8 @@ Before running the database connector, you should review the [access control lis
    and `mysql.config` is the configuration file containing the parameters for the connector
    execution.
 
+   You can download the `mysql-connector-java` from this URL: (https://mvnrepository.com/artifact/mysql/mysql-connector-java). Keep the jar file in the same directory where you are keeping google-cloudsearch-database-connector jar.
+
    **Note:** If the configuration file is not specified, a default file name of
    `connector-config.properties` will be assumed.
 
